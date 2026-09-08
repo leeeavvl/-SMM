@@ -12,6 +12,7 @@
     <div class="brand">🏭 Контент-завод</div>
     <nav class="nav">
       <button class="nav-item active" data-view="dashboard">Дашборд</button>
+      <button class="nav-item" data-view="assistant">AI ассистент</button>
       <button class="nav-item" data-view="content">База</button>
       <button class="nav-item" data-view="posts">Посты</button>
       <button class="nav-item" data-view="analysis">Анализ</button>
@@ -99,6 +100,23 @@
       </div>
 
       <div class="cards" id="dashboard-cards"></div>
+    </section>
+
+    <!-- AI assistant -->
+    <section id="view-assistant" class="view">
+      <div class="assistant-header">
+        <h1>🤖 AI ассистент</h1>
+        <div class="assistant-tabs" id="assistant-mode-tabs">
+          <button class="assistant-tab active" data-mode="tools">Ассистенты</button>
+          <button class="assistant-tab" data-mode="favorites">Мои карточки</button>
+        </div>
+        <div class="assistant-filters" id="assistant-category-filters">
+          <button class="assistant-filter active" data-category="all">Все</button>
+          <button class="assistant-filter" data-category="photo">🖼 Фото</button>
+          <button class="assistant-filter" data-category="text">📄 Текст</button>
+        </div>
+      </div>
+      <div class="assistant-grid" id="assistant-grid"></div>
     </section>
 
     <!-- Base (knowledge base) -->
@@ -333,6 +351,38 @@
       </div>
     </section>
   </main>
+</div>
+
+<!-- AI assistant tool modal -->
+<div class="modal" id="modal-assistant-tool">
+  <div class="modal-box wide">
+    <div class="post-editor-header">
+      <h2 id="assistant-tool-title">Инструмент</h2>
+      <select id="assistant-tool-provider" class="assistant-provider-select">
+        <option value="">По умолчанию (из настроек)</option>
+        <option value="anthropic">Claude (Anthropic)</option>
+        <option value="openai">ChatGPT (OpenAI)</option>
+        <option value="gemini">Google Gemini (бесплатно)</option>
+        <option value="ollama">Ollama (локально)</option>
+      </select>
+      <button class="modal-close" id="btn-close-assistant-tool" type="button" aria-label="Закрыть">×</button>
+    </div>
+    <p class="hint" id="assistant-tool-description"></p>
+    <div id="assistant-tool-fields"></div>
+    <div class="modal-actions" style="justify-content:flex-start;">
+      <button class="btn primary" id="btn-run-assistant-tool">✨ Сгенерировать</button>
+    </div>
+    <div id="assistant-tool-result-box" class="assistant-result-box" hidden>
+      <div class="view-header">
+        <h2 class="section-title">Результат</h2>
+        <div class="header-actions">
+          <button class="btn small" id="btn-copy-assistant-result">Копировать</button>
+          <button class="btn small primary" id="btn-use-assistant-result">Использовать как пост</button>
+        </div>
+      </div>
+      <div id="assistant-tool-result" class="assistant-result"></div>
+    </div>
+  </div>
 </div>
 
 <!-- Content editor modal -->

@@ -1,6 +1,9 @@
 const state = {
   platforms: [],
   content: [],
+  assistantTools: [],
+  assistantMode: "tools",
+  assistantCategory: "all",
 };
 
 const STATUS_LABELS = {
@@ -45,6 +48,7 @@ function switchView(view) {
   document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${view}`));
   if (view === "dashboard") loadDashboard();
+  if (view === "assistant") loadAssistant();
   if (view === "content") loadContent();
   if (view === "posts") loadPosts();
   if (view === "analysis") loadAnalysis();
@@ -1485,6 +1489,280 @@ document.getElementById("btn-save-stats").addEventListener("click", async () => 
   } catch (e) {
     toast(e.message, true);
   }
+});
+
+// ---------- AI assistant ----------
+const ASSISTANT_FAVORITES_KEY = "assistant_favorites";
+
+function getAssistantFavorites() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(ASSISTANT_FAVORITES_KEY) || "[]"));
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function setAssistantFavorites(set) {
+  try {
+    localStorage.setItem(ASSISTANT_FAVORITES_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {
+    // localStorage недоступен (приватный режим и т.п.) — просто не сохраняем избранное
+  }
+}
+
+function toggleAssistantFavorite(toolId) {
+  const favs = getAssistantFavorites();
+  if (favs.has(toolId)) favs.delete(toolId);
+  else favs.add(toolId);
+  setAssistantFavorites(favs);
+  renderAssistantGrid();
+}
+
+async function loadAssistant() {
+  if (!state.assistantTools.length) {
+    state.assistantTools = await api("/api/ai/assistant/tools");
+  }
+  renderAssistantGrid();
+}
+
+function renderAssistantGrid() {
+  const grid = document.getElementById("assistant-grid");
+  const favs = getAssistantFavorites();
+  let tools = state.assistantTools;
+  if (state.assistantMode === "favorites") {
+    tools = tools.filter((t) => favs.has(t.id));
+  }
+  if (state.assistantCategory !== "all") {
+    tools = tools.filter((t) => t.category === state.assistantCategory);
+  }
+
+  if (!tools.length) {
+    grid.innerHTML = `<div class="spinner">${
+      state.assistantMode === "favorites" ? "Вы ещё не добавили карточки в избранное — нажмите ♡ на нужном инструменте." : "Ничего не найдено"
+    }</div>`;
+    return;
+  }
+
+  grid.innerHTML = tools
+    .map((t) => {
+      const isFav = favs.has(t.id);
+      const tagLabel = t.category === "photo" ? "Фото" : "AI текст";
+      return `
+        <div class="assistant-card ${t.available ? "" : "unavailable"}" data-tool-id="${t.id}">
+          <div class="assistant-card-top">
+            <span class="assistant-card-tag">${tagLabel}</span>
+            <button type="button" class="assistant-fav-btn ${isFav ? "active" : ""}" data-fav-id="${t.id}">${isFav ? "♥" : "♡"}</button>
+          </div>
+          <div class="assistant-card-icon">${t.icon}</div>
+          <div class="assistant-card-title">${escapeHtml(t.title)}</div>
+          <div class="assistant-card-desc">${escapeHtml(t.description)}</div>
+          ${t.available ? "" : `<div class="assistant-card-unavailable-note">${escapeHtml(t.unavailable_reason)}</div>`}
+        </div>
+      `;
+    })
+    .join("");
+
+  grid.querySelectorAll(".assistant-fav-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleAssistantFavorite(btn.dataset.favId);
+    });
+  });
+  grid.querySelectorAll(".assistant-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const tool = state.assistantTools.find((t) => t.id === card.dataset.toolId);
+      if (tool && tool.available) openAssistantToolModal(tool);
+    });
+  });
+}
+
+document.getElementById("assistant-mode-tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest(".assistant-tab");
+  if (!btn) return;
+  document.querySelectorAll("#assistant-mode-tabs .assistant-tab").forEach((b) => b.classList.toggle("active", b === btn));
+  state.assistantMode = btn.dataset.mode;
+  renderAssistantGrid();
+});
+
+document.getElementById("assistant-category-filters").addEventListener("click", (e) => {
+  const btn = e.target.closest(".assistant-filter");
+  if (!btn) return;
+  document.querySelectorAll("#assistant-category-filters .assistant-filter").forEach((b) => b.classList.toggle("active", b === btn));
+  state.assistantCategory = btn.dataset.category;
+  renderAssistantGrid();
+});
+
+function assistantFieldHtml(field) {
+  const req = field.required ? "required" : "";
+  if (field.type === "textarea") {
+    return `
+      <div class="assistant-field">
+        <label>${escapeHtml(field.label)}${field.required ? " *" : ""}</label>
+        <textarea data-field-key="${field.key}" rows="4" placeholder="${escapeHtml(field.placeholder)}" ${req}></textarea>
+      </div>`;
+  }
+  if (field.type === "number") {
+    return `
+      <div class="assistant-field">
+        <label>${escapeHtml(field.label)}${field.required ? " *" : ""}</label>
+        <input type="number" data-field-key="${field.key}" placeholder="${escapeHtml(field.placeholder)}" ${req}>
+      </div>`;
+  }
+  if (field.type === "image") {
+    return `
+      <div class="assistant-field">
+        <label>${escapeHtml(field.label)}${field.required ? " *" : ""}</label>
+        <input type="hidden" data-field-key="${field.key}" value="">
+        <div class="assistant-dropzone" data-image-field="${field.key}">
+          <div>⬆ Перетащите изображение или нажмите, чтобы выбрать файл</div>
+        </div>
+        <div class="assistant-image-preview" data-image-preview="${field.key}" hidden></div>
+        <input type="file" accept="image/*" hidden data-image-input="${field.key}">
+      </div>`;
+  }
+  return `
+    <div class="assistant-field">
+      <label>${escapeHtml(field.label)}${field.required ? " *" : ""}</label>
+      <input type="text" data-field-key="${field.key}" placeholder="${escapeHtml(field.placeholder)}" ${req}>
+    </div>`;
+}
+
+let currentAssistantTool = null;
+
+function openAssistantToolModal(tool) {
+  currentAssistantTool = tool;
+  document.getElementById("assistant-tool-title").textContent = `${tool.icon} ${tool.title}`;
+  document.getElementById("assistant-tool-description").textContent = tool.description;
+  document.getElementById("assistant-tool-fields").innerHTML = tool.fields.map(assistantFieldHtml).join("");
+  document.getElementById("assistant-tool-provider").value = "";
+  document.getElementById("assistant-tool-result-box").hidden = true;
+  document.getElementById("assistant-tool-result").innerHTML = "";
+
+  document.querySelectorAll('#assistant-tool-fields [data-image-field]').forEach((zone) => {
+    const key = zone.dataset.imageField;
+    const fileInput = document.querySelector(`[data-image-input="${key}"]`);
+    const hiddenInput = document.querySelector(`[data-field-key="${key}"]`);
+    const preview = document.querySelector(`[data-image-preview="${key}"]`);
+
+    const handleFile = async (file) => {
+      try {
+        toast("Загрузка изображения...");
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/content/upload-media", { method: "POST", body: formData });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Ошибка загрузки");
+        const { url } = await res.json();
+        hiddenInput.value = url;
+        preview.innerHTML = `<img src="${url}" alt="">`;
+        preview.hidden = false;
+        toast("Изображение загружено");
+      } catch (err) {
+        toast(err.message, true);
+      }
+    };
+
+    zone.addEventListener("click", () => fileInput.click());
+    zone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      zone.classList.add("dragover");
+    });
+    zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+    zone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      zone.classList.remove("dragover");
+      const file = e.dataTransfer.files?.[0];
+      if (file) handleFile(file);
+    });
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files?.[0];
+      if (file) handleFile(file);
+      fileInput.value = "";
+    });
+  });
+
+  document.getElementById("modal-assistant-tool").classList.add("active");
+}
+
+document.getElementById("btn-close-assistant-tool").addEventListener("click", () => {
+  document.getElementById("modal-assistant-tool").classList.remove("active");
+});
+
+document.getElementById("btn-run-assistant-tool").addEventListener("click", async () => {
+  if (!currentAssistantTool) return;
+  const inputs = {};
+  document.querySelectorAll("#assistant-tool-fields [data-field-key]").forEach((el) => {
+    inputs[el.dataset.fieldKey] = el.value;
+  });
+  const missing = currentAssistantTool.fields.filter((f) => f.required && !String(inputs[f.key] || "").trim());
+  if (missing.length) {
+    toast(`Заполните обязательные поля: ${missing.map((f) => f.label).join(", ")}`, true);
+    return;
+  }
+
+  const btn = document.getElementById("btn-run-assistant-tool");
+  const provider = document.getElementById("assistant-tool-provider").value || null;
+  btn.disabled = true;
+  btn.textContent = "Генерация...";
+  try {
+    const data = await api("/api/ai/assistant/run", {
+      method: "POST",
+      body: JSON.stringify({ tool_id: currentAssistantTool.id, inputs, provider }),
+    });
+    const resultBox = document.getElementById("assistant-tool-result-box");
+    const resultEl = document.getElementById("assistant-tool-result");
+    if (data.image_url) {
+      resultEl.innerHTML = `<img src="${data.image_url}" alt="">`;
+    } else {
+      resultEl.textContent = data.result || "";
+    }
+    resultBox.hidden = false;
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "✨ Сгенерировать";
+  }
+});
+
+document.getElementById("btn-copy-assistant-result").addEventListener("click", async () => {
+  const resultEl = document.getElementById("assistant-tool-result");
+  const img = resultEl.querySelector("img");
+  const text = img ? img.src : resultEl.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("Скопировано");
+  } catch (e) {
+    toast("Не удалось скопировать", true);
+  }
+});
+
+document.getElementById("btn-use-assistant-result").addEventListener("click", () => {
+  const resultEl = document.getElementById("assistant-tool-result");
+  const img = resultEl.querySelector("img");
+  document.getElementById("modal-assistant-tool").classList.remove("active");
+  openContentModal(null);
+  if (img) {
+    document.getElementById("content-media").value = img.src;
+    setMediaPreview(img.src);
+  } else {
+    document.getElementById("content-body").value = resultEl.textContent;
+    updateCharCounter();
+  }
+  if (currentAssistantTool) {
+    document.getElementById("content-title").value = currentAssistantTool.title;
+  }
+});
+
+// ---------- Modals: закрытие по клику на фон и по Escape ----------
+document.querySelectorAll(".modal").forEach((modal) => {
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.classList.remove("active");
+  });
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  document.querySelectorAll(".modal.active").forEach((modal) => modal.classList.remove("active"));
 });
 
 // ---------- Init ----------

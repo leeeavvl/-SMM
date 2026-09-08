@@ -59,6 +59,12 @@ class SettingsUpdate(BaseModel):
     google_sheets_auto_sync: Optional[bool] = None
 
 
+class AssistantRunRequest(BaseModel):
+    tool_id: str = Field(min_length=1)
+    inputs: dict[str, str] = {}
+    provider: Optional[str] = None
+
+
 class AIGenerateRequest(BaseModel):
     topic: str = Field(min_length=1)
     brief: str = ""
