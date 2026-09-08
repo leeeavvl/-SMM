@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+data.db
+.idea/
+static/uploads/
+crested-axe-507618-a8-ac0577022f1d.json
+*service-account*.json
+*serviceaccount*.json

@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Контент-завод</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">🏭 Контент-завод</div>
+    <nav class="nav">
+      <button class="nav-item active" data-view="dashboard">Дашборд</button>
+      <button class="nav-item" data-view="content">База</button>
+      <button class="nav-item" data-view="posts">Посты</button>
+      <button class="nav-item" data-view="analysis">Анализ</button>
+      <button class="nav-item" data-view="plan">Контент-план</button>
+      <button class="nav-item" data-view="publish">Публикации</button>
+      <button class="nav-item" data-view="platforms">Социальные сети</button>
+      <button class="nav-item" data-view="sales">Продажи</button>
+      <button class="nav-item" data-view="settings">Настройки</button>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <!-- Dashboard -->
+    <section id="view-dashboard" class="view active">
+      <div class="hero">
+        <div class="hero-crumbs">Проекты / Контент-завод</div>
+        <h1 class="hero-title">🏭 <span id="hero-brand-name">Контент-завод</span></h1>
+        <p class="hero-desc" id="hero-desc">Контент-завод по созданию, написанию, публикации, продажам в социальных сетях.</p>
+
+        <div class="ai-card">
+          <h2 class="ai-card-title">✨ Создать посты с помощью ИИ</h2>
+
+          <label>Для каких социальных сетей нужен пост</label>
+          <div class="check-grid" id="hero-platform-checks"></div>
+
+          <div class="ai-row">
+            <div class="ai-col">
+              <label>Тема поста</label>
+              <input type="text" id="hero-topic" placeholder="Например: запуск новой коллекции кроссовок">
+            </div>
+            <div class="ai-col ai-col-narrow">
+              <label>Тон</label>
+              <select id="hero-tone">
+                <option value="нейтральный">Нейтральный</option>
+                <option value="продающий">Продающий</option>
+                <option value="экспертный">Экспертный</option>
+                <option value="дружелюбный">Дружелюбный / неформальный</option>
+                <option value="официальный">Официально-деловой</option>
+              </select>
+            </div>
+            <div class="ai-col ai-col-narrow">
+              <label>Сколько постов на каждую соцсеть</label>
+              <select id="hero-variants">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="ai-row">
+            <div class="ai-col ai-col-narrow">
+              <label>Длина поста (символов)</label>
+              <input type="number" id="hero-length" placeholder="Например: 800" min="1" max="20000">
+            </div>
+            <div class="ai-col">
+              <p class="hint" style="margin-top:28px;">Необязательно — если оставить пустым, длина будет по ТЗ платформы. Если указать, это значение станет приоритетным.</p>
+            </div>
+          </div>
+
+          <label>Ключевые тезисы / техническое задание</label>
+          <textarea id="hero-brief" rows="3" placeholder="Что обязательно упомянуть, стиль подачи, призыв к действию и т.д."></textarea>
+
+          <div class="ai-generate-row">
+            <button class="btn primary" id="hero-generate-btn">✨ Сгенерировать посты</button>
+          </div>
+
+          <div id="hero-ai-results" class="ai-results"></div>
+        </div>
+      </div>
+
+      <div class="view-header">
+        <h2 class="section-title">Управление контентом</h2>
+        <button class="btn primary" id="btn-new-content">+ Новый материал вручную</button>
+      </div>
+
+      <div class="cards" id="dashboard-cards"></div>
+    </section>
+
+    <!-- Base (knowledge base) -->
+    <section id="view-content" class="view">
+      <h1>База</h1>
+      <p class="hint">Загружайте сюда дополнительные материалы (стиль-гайды, примеры удачных постов, заметки) — ИИ будет учитывать их при написании любых постов. Идеи по улучшению из вкладки «Анализ» тоже попадают сюда автоматически.</p>
+
+      <div class="ai-card">
+        <h2 class="ai-card-title">📚 Добавить материал</h2>
+        <label>Название (необязательно)</label>
+        <input type="text" id="kb-title" placeholder="Например: гайд по tone of voice">
+        <label>Текст</label>
+        <textarea id="kb-content" rows="6" placeholder="Вставьте текст или загрузите файл ниже"></textarea>
+        <label>Загрузить файл (.txt или .pdf)</label>
+        <input type="file" id="kb-file" accept=".txt,.pdf,text/plain,application/pdf">
+        <div id="kb-file-status" class="hint"></div>
+        <div class="ai-generate-row">
+          <button class="btn primary" id="btn-add-kb">Добавить в базу</button>
+        </div>
+      </div>
+
+      <div class="view-header">
+        <h2 class="section-title">Материалы и идеи</h2>
+      </div>
+      <div id="kb-list" class="content-list"></div>
+
+      <div class="view-header">
+        <h2 class="section-title">Социальные сети</h2>
+        <button class="nav-link" data-view="platforms">Все площадки →</button>
+      </div>
+      <div class="file-grid" id="content-platforms"></div>
+    </section>
+
+    <!-- Posts (full text) -->
+    <section id="view-posts" class="view">
+      <h1>Посты</h1>
+      <p class="hint">Полный текст всех постов, созданных приложением — вручную, через ИИ-генерацию на дашборде или в «Контент-плане». Редактирование — той же кнопкой «Изменить».</p>
+      <div id="posts-list" class="content-list"></div>
+    </section>
+
+    <!-- Analysis -->
+    <section id="view-analysis" class="view">
+      <h1>Анализ</h1>
+      <p class="hint">Оцените готовые посты — ИИ выставит балл релевантности, даст обратную связь и предложит конкретные идеи по улучшению. Одобренные идеи можно сохранить в «Базу», чтобы они учитывались во всех будущих постах.</p>
+      <div id="analysis-list" class="content-list"></div>
+    </section>
+
+    <!-- Content plan -->
+    <section id="view-plan" class="view">
+      <h1>Контент-план</h1>
+
+      <div class="ai-card">
+        <h2 class="ai-card-title">📅 Сгенерировать план</h2>
+
+        <label>Социальная сеть</label>
+        <select id="plan-platform"></select>
+
+        <table class="plan-builder" id="plan-builder-table">
+          <thead>
+            <tr>
+              <th>Направление</th>
+              <th>Контент</th>
+              <th>Формат</th>
+              <th>Кол-во</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="plan-builder-rows"></tbody>
+        </table>
+        <button class="btn small" id="btn-add-plan-row">+ Добавить строку</button>
+
+        <div class="ai-row" style="margin-top:16px;">
+          <div class="ai-col ai-col-narrow">
+            <label>Период — с</label>
+            <input type="date" id="plan-start-date">
+          </div>
+          <div class="ai-col ai-col-narrow">
+            <label>по</label>
+            <input type="date" id="plan-end-date">
+          </div>
+          <div class="ai-col ai-col-narrow">
+            <label>Тон</label>
+            <select id="plan-tone">
+              <option value="нейтральный">Нейтральный</option>
+              <option value="продающий">Продающий</option>
+              <option value="экспертный">Экспертный</option>
+              <option value="дружелюбный">Дружелюбный / неформальный</option>
+              <option value="официальный">Официально-деловой</option>
+            </select>
+          </div>
+        </div>
+        <p class="hint" id="plan-period-hint"></p>
+        <div class="ai-generate-row">
+          <button class="btn primary" id="btn-generate-plan">📅 Сгенерировать план</button>
+        </div>
+      </div>
+
+      <div class="view-header">
+        <h2 class="section-title">План по дням</h2>
+        <button class="btn small" id="btn-sync-gsheet">📤 Выгрузить в Google Таблицу</button>
+      </div>
+      <div id="plan-list" class="plan-list"></div>
+
+      <div class="view-header">
+        <h2 class="section-title">Анализ эффективности опубликованных постов</h2>
+        <button class="btn small" id="btn-refresh-telegram-stats">🔄 Обновить статистику Telegram</button>
+      </div>
+      <p class="hint">Просмотры для Telegram подтягиваются автоматически с публичной страницы канала. Для остальных площадок внесите цифры вручную.</p>
+      <table class="table">
+        <thead>
+          <tr><th>Материал</th><th>Платформа</th><th>Просмотры</th><th>Лайки</th><th>Комментарии</th><th>Оценка</th><th></th></tr>
+        </thead>
+        <tbody id="stats-list"></tbody>
+      </table>
+    </section>
+
+    <!-- Publish -->
+    <section id="view-publish" class="view">
+      <h1>Очередь публикаций</h1>
+      <table class="table">
+        <thead>
+          <tr><th>Материал</th><th>Платформа</th><th>Статус</th><th>Когда</th><th>Ссылка / ошибка</th></tr>
+        </thead>
+        <tbody id="publish-queue"></tbody>
+      </table>
+    </section>
+
+    <!-- Platforms -->
+    <section id="view-platforms" class="view">
+      <h1>Социальные сети</h1>
+      <p class="hint">Все площадки, куда «Контент-завод» умеет отправлять публикации. Подключите нужные, чтобы разблокировать их в публикации и ИИ-генерации.</p>
+      <div class="file-grid" id="platforms-list"></div>
+    </section>
+
+    <!-- Sales -->
+    <section id="view-sales" class="view">
+      <div class="view-header">
+        <h1>Продажи</h1>
+        <button class="btn primary" id="btn-new-sale">+ Добавить запись</button>
+      </div>
+      <div class="cards" id="sales-cards"></div>
+      <table class="table">
+        <thead>
+          <tr><th>Дата</th><th>Платформа</th><th>Заказы</th><th>Выручка</th><th>Заметка</th><th></th></tr>
+        </thead>
+        <tbody id="sales-list"></tbody>
+      </table>
+    </section>
+
+    <!-- Settings -->
+    <section id="view-settings" class="view">
+      <h1>Настройки</h1>
+      <div class="settings-block">
+        <h2>О компании</h2>
+        <p class="hint">Это описание подмешивается ИИ в КАЖДЫЙ генерируемый пост, на любой платформе — чтобы контент всегда отражал, кто вы и чем занимаетесь.</p>
+        <label>Название</label>
+        <input type="text" id="settings-brand-name" placeholder="Карьерный юрист">
+        <label>Описание бренда</label>
+        <textarea id="settings-brand-description" rows="4" placeholder="Кадровое агентство, которое помогает..."></textarea>
+        <div class="modal-actions" style="justify-content:flex-start;">
+          <button class="btn primary" id="btn-save-brand">Сохранить описание бренда</button>
+        </div>
+      </div>
+
+      <div class="settings-block" style="margin-top:16px;">
+        <h2>Источник ИИ-генерации постов</h2>
+        <p class="hint">Выберите, чем генерировать посты: платным облачным Claude или бесплатной локальной моделью через Ollama.</p>
+        <label>Провайдер</label>
+        <select id="settings-provider">
+          <option value="anthropic">Claude (Anthropic API, платно)</option>
+          <option value="ollama">Ollama — локальная модель (бесплатно)</option>
+        </select>
+
+        <div id="settings-anthropic-block">
+          <label>API-ключ Anthropic</label>
+          <input type="password" id="settings-api-key" placeholder="sk-ant-...">
+          <div id="settings-anthropic-status" class="hint"></div>
+        </div>
+
+        <div id="settings-ollama-block">
+          <label>Адрес Ollama</label>
+          <input type="text" id="settings-ollama-url" placeholder="http://localhost:11434">
+          <label>Модель</label>
+          <input type="text" id="settings-ollama-model" placeholder="qwen2.5:7b">
+          <p class="hint">Установите Ollama с <strong>ollama.com</strong>, затем выполните в терминале:</p>
+          <pre class="code-block">ollama pull qwen2.5:7b</pre>
+          <button class="btn small" id="btn-check-ollama">Проверить подключение</button>
+          <div id="settings-ollama-status" class="hint"></div>
+        </div>
+
+        <div class="modal-actions" style="justify-content:flex-start;">
+          <button class="btn primary" id="btn-save-settings">Сохранить настройки</button>
+        </div>
+      </div>
+
+      <div class="settings-block" style="margin-top:16px;">
+        <h2>Google Таблица</h2>
+        <p class="hint">Контент-план можно автоматически выгружать в вашу Google Таблицу. Понадобится сервисный аккаунт Google Cloud — путь к JSON-ключу укажите ниже.</p>
+        <label>Путь к JSON-ключу сервисного аккаунта</label>
+        <input type="text" id="settings-gsheet-key-path" placeholder="/Users/you/PycharmProjects/-SMM/service-account.json">
+        <label>Ссылка на таблицу</label>
+        <input type="text" id="settings-gsheet-url" placeholder="https://docs.google.com/spreadsheets/d/...">
+        <label>Название листа (необязательно)</label>
+        <input type="text" id="settings-gsheet-worksheet" placeholder="По умолчанию — первый лист">
+        <label class="check-item" style="margin-top:10px;">
+          <input type="checkbox" id="settings-gsheet-autosync"> Автоматически выгружать новый план сразу после генерации
+        </label>
+        <div class="modal-actions" style="justify-content:flex-start; gap:8px;">
+          <button class="btn primary" id="btn-save-gsheet">Сохранить</button>
+          <button class="btn" id="btn-check-gsheet">Проверить подключение</button>
+        </div>
+        <div id="settings-gsheet-status" class="hint"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Content editor modal -->
+<div class="modal" id="modal-content">
+  <div class="modal-box wide post-editor">
+    <input type="hidden" id="content-id">
+
+    <div class="post-editor-header">
+      <h2 id="content-modal-title">Новый пост</h2>
+      <button class="link-toggle" id="btn-toggle-preview" type="button">👁 Предпросмотр</button>
+      <button class="modal-close" id="btn-close-content" type="button" aria-label="Закрыть">×</button>
+    </div>
+
+    <label>Заголовок</label>
+    <input type="text" id="content-title" placeholder="Заголовок поста">
+
+    <div class="editor-box">
+      <textarea id="content-body" class="content-body-textarea" rows="12" placeholder="О чём этот пост?"></textarea>
+      <div id="content-preview" class="content-preview" hidden>
+        <div class="preview-platforms" id="preview-platforms"></div>
+        <div class="post-preview-card">
+          <div class="ppc-header">
+            <div class="ppc-avatar" id="ppc-avatar">К</div>
+            <div class="ppc-meta">
+              <div class="ppc-name" id="ppc-name">Ваш бренд</div>
+              <div class="ppc-time">сейчас · 🌐</div>
+            </div>
+          </div>
+          <div class="ppc-title" id="ppc-title"></div>
+          <div class="ppc-body" id="ppc-body"></div>
+          <div class="ppc-media" id="ppc-media" hidden></div>
+          <div class="ppc-tags" id="ppc-tags"></div>
+          <div class="ppc-footer">
+            <span>👍 Нравится</span>
+            <span>💬 Комментировать</span>
+            <span>↗ Поделиться</span>
+          </div>
+        </div>
+      </div>
+      <div class="editor-toolbar">
+        <div class="editor-toolbar-tools">
+          <button type="button" class="tool-btn" id="tool-emoji" title="Эмодзи">🙂</button>
+          <button type="button" class="tool-btn" id="tool-list" title="Список">📋</button>
+          <button type="button" class="tool-btn" id="tool-hashtag" title="Добавить хештег">#</button>
+          <button type="button" class="tool-btn" id="tool-uppercase" title="Формат текста">T</button>
+        </div>
+        <div class="char-counter" id="char-counter">0</div>
+      </div>
+      <div id="emoji-picker" class="emoji-picker" hidden></div>
+    </div>
+
+    <label>Теги (через запятую)</label>
+    <input type="text" id="content-tags" placeholder="маркетинг, продажи">
+
+    <div class="section-label">Фото и видео</div>
+    <div class="media-dropzone" id="media-dropzone">
+      <div class="media-dz-icon">⬆</div>
+      <div>Перетащите фото, GIF или видео в это окно</div>
+      <div class="hint">или нажмите, чтобы выбрать файл</div>
+      <input type="file" id="media-file-input" accept="image/*,video/*" hidden>
+    </div>
+    <div id="media-preview" class="media-preview" hidden></div>
+    <label>Или ссылка на медиа</label>
+    <input type="text" id="content-media" placeholder="https://...">
+
+    <button type="button" class="settings-toggle" id="btn-toggle-post-settings">⚙ Настройки поста <span id="post-settings-caret">▾</span></button>
+    <div class="post-settings-panel" id="post-settings-panel" hidden>
+      <label>Платформы для публикации</label>
+      <div id="content-platform-checks" class="check-grid"></div>
+      <label>Запланировать на (необязательно — для кнопки «Запланировать»)</label>
+      <input type="datetime-local" id="content-schedule">
+    </div>
+
+    <div class="modal-actions post-editor-actions">
+      <button class="btn" id="btn-save-draft">Сохранить как черновик</button>
+      <div class="post-editor-actions-right">
+        <button class="btn" id="btn-schedule-post">Запланировать</button>
+        <button class="btn primary" id="btn-publish-now">Опубликовать сейчас</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Publish modal -->
+<div class="modal" id="modal-publish">
+  <div class="modal-box">
+    <h2>Опубликовать материал</h2>
+    <input type="hidden" id="publish-content-id">
+    <label>Платформы</label>
+    <div id="publish-platform-checks" class="check-grid"></div>
+    <label>Запланировать на (необязательно)</label>
+    <input type="datetime-local" id="publish-schedule">
+    <div class="modal-actions">
+      <button class="btn" id="btn-cancel-publish">Отмена</button>
+      <button class="btn primary" id="btn-confirm-publish">Опубликовать / запланировать</button>
+    </div>
+  </div>
+</div>
+
+<!-- Platform brief & channel modal -->
+<div class="modal" id="modal-platform-brief">
+  <div class="modal-box">
+    <h2 id="platform-brief-title">ТЗ и канал</h2>
+    <input type="hidden" id="platform-brief-id">
+    <label>Ссылка на канал/страницу</label>
+    <input type="text" id="platform-brief-channel" placeholder="https://t.me/mychannel">
+    <label>Техническое задание для этой платформы</label>
+    <textarea id="platform-brief-text" rows="6" placeholder="Стиль, обязательные тезисы, ограничения, целевая аудитория этой площадки..."></textarea>
+    <label>Загрузить ТЗ из файла (.txt или .pdf)</label>
+    <input type="file" id="platform-brief-file" accept=".txt,.pdf,text/plain,application/pdf">
+    <div id="platform-brief-file-status" class="hint"></div>
+    <div class="modal-actions">
+      <button class="btn" id="btn-cancel-platform-brief">Отмена</button>
+      <button class="btn primary" id="btn-save-platform-brief">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Platform connect modal -->
+<div class="modal" id="modal-platform">
+  <div class="modal-box">
+    <h2 id="platform-modal-title">Подключить платформу</h2>
+    <input type="hidden" id="platform-id">
+    <div id="platform-fields"></div>
+    <div class="modal-actions">
+      <button class="btn" id="btn-cancel-platform">Отмена</button>
+      <button class="btn primary" id="btn-save-platform">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sale modal -->
+<!-- Manual stats modal -->
+<div class="modal" id="modal-stats">
+  <div class="modal-box">
+    <h2 id="stats-modal-title">Метрики поста</h2>
+    <input type="hidden" id="stats-content-platform-id">
+    <label>Просмотры</label>
+    <input type="number" id="stats-views" min="0" placeholder="0">
+    <label>Лайки</label>
+    <input type="number" id="stats-likes" min="0" placeholder="0">
+    <label>Комментарии</label>
+    <input type="number" id="stats-comments" min="0" placeholder="0">
+    <div class="modal-actions">
+      <button class="btn" id="btn-cancel-stats">Отмена</button>
+      <button class="btn primary" id="btn-save-stats">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-sale">
+  <div class="modal-box">
+    <h2>Новая запись о продажах</h2>
+    <label>Платформа</label>
+    <select id="sale-platform"></select>
+    <label>Дата</label>
+    <input type="date" id="sale-date">
+    <label>Кол-во заказов</label>
+    <input type="number" id="sale-orders" value="0" min="0">
+    <label>Выручка</label>
+    <input type="number" id="sale-revenue" value="0" min="0" step="0.01">
+    <label>Заметка</label>
+    <input type="text" id="sale-notes" placeholder="Необязательно">
+    <div class="modal-actions">
+      <button class="btn" id="btn-cancel-sale">Отмена</button>
+      <button class="btn primary" id="btn-save-sale">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
