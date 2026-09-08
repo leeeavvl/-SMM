@@ -1,7 +1,9 @@
 """Генерация постов по теме и техническому заданию.
 
-Поддерживает два провайдера:
+Поддерживает четыре провайдера:
 - anthropic — Claude API (платно, нужен ключ);
+- openai — ChatGPT / OpenAI API (платно, нужен ключ);
+- gemini — Google Gemini API (есть бесплатный уровень, нужен ключ с ai.google.dev);
 - ollama — локальная модель через Ollama (бесплатно, работает на компьютере пользователя).
 
 Если выбрано несколько платформ, для каждой из них делается отдельный запрос к модели,
@@ -16,11 +18,17 @@ import re
 
 import anthropic
 import httpx
+import openai
+from google import genai
+from google.genai import errors as genai_errors
+from google.genai import types as genai_types
 
 from app.database import DEFAULT_BRAND_DESCRIPTION, DEFAULT_BRAND_NAME, db_cursor, get_setting
 from app.platforms import PLATFORM_MAP
 
 ANTHROPIC_MODEL = "claude-sonnet-5"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
 DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
@@ -105,6 +113,14 @@ def get_provider() -> str:
     return get_setting("ai_provider") or "anthropic"
 
 
+def get_openai_model() -> str:
+    return get_setting("openai_model") or DEFAULT_OPENAI_MODEL
+
+
+def get_gemini_model() -> str:
+    return get_setting("gemini_model") or DEFAULT_GEMINI_MODEL
+
+
 def get_ollama_model() -> str:
     return get_setting("ollama_model") or DEFAULT_OLLAMA_MODEL
 
@@ -119,6 +135,26 @@ def _get_anthropic_api_key() -> str:
         raise AIConfigError(
             "API-ключ Anthropic не настроен. Добавьте его в разделе «Настройки» "
             "или переключитесь на локальную генерацию через Ollama."
+        )
+    return key
+
+
+def _get_openai_api_key() -> str:
+    key = get_setting("openai_api_key") or os.environ.get("OPENAI_API_KEY")
+    if not key:
+        raise AIConfigError(
+            "API-ключ OpenAI не настроен. Добавьте его в разделе «Настройки» "
+            "или переключитесь на другого провайдера."
+        )
+    return key
+
+
+def _get_gemini_api_key() -> str:
+    key = get_setting("gemini_api_key") or os.environ.get("GEMINI_API_KEY")
+    if not key:
+        raise AIConfigError(
+            "API-ключ Google Gemini не настроен. Получите бесплатный ключ на ai.google.dev "
+            "и добавьте его в разделе «Настройки»."
         )
     return key
 
@@ -290,6 +326,64 @@ def _generate_anthropic(system_prompt: str, user_prompt: str) -> str:
     return "".join(block.text for block in response.content if getattr(block, "type", None) == "text")
 
 
+def _generate_openai(system_prompt: str, user_prompt: str) -> str:
+    client = openai.OpenAI(api_key=_get_openai_api_key())
+    model = get_openai_model()
+    try:
+        # Без response_format: некоторые запросы (варианты постов) ожидают JSON-МАССИВ
+        # верхнего уровня, а json_object режим OpenAI гарантирует только JSON-объект —
+        # полагаемся на явную инструкцию в system_prompt, как и для Anthropic/Ollama.
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except openai.AuthenticationError as exc:
+        raise AIConfigError(
+            "API-ключ OpenAI недействителен. Проверьте его в разделе «Настройки»."
+        ) from exc
+    except openai.NotFoundError as exc:
+        raise AIConfigError(
+            f"Модель «{model}» недоступна для вашего аккаунта OpenAI. Укажите другую модель в «Настройках»."
+        ) from exc
+    except openai.APIError as exc:
+        raise AIGenerationError(f"Ошибка обращения к OpenAI API: {exc}") from exc
+
+    return response.choices[0].message.content or ""
+
+
+def _generate_gemini(system_prompt: str, user_prompt: str) -> str:
+    client = genai.Client(api_key=_get_gemini_api_key())
+    model_name = get_gemini_model()
+    try:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=user_prompt,
+            config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
+        )
+    except genai_errors.APIError as exc:
+        # Google возвращает невалидный ключ как 400 INVALID_ARGUMENT (а не 401/403),
+        # поэтому дополнительно проверяем текст ошибки на упоминание API-ключа.
+        if exc.code in (401, 403) or "API key not valid" in str(exc) or "API_KEY_INVALID" in str(exc):
+            raise AIConfigError(
+                "API-ключ Google Gemini недействителен. Проверьте его в разделе «Настройки»."
+            ) from exc
+        if exc.code == 404:
+            raise AIConfigError(
+                f"Модель «{model_name}» недоступна. Укажите другую модель Gemini в «Настройках»."
+            ) from exc
+        if exc.code == 429:
+            raise AIGenerationError(
+                "Превышен бесплатный лимит запросов Gemini на сегодня. Попробуйте позже "
+                "или переключитесь на другого провайдера."
+            ) from exc
+        raise AIGenerationError(f"Ошибка обращения к Gemini API: {exc}") from exc
+
+    return response.text or ""
+
+
 def _generate_ollama(system_prompt: str, user_prompt: str) -> str:
     base_url = get_ollama_base_url()
     model = get_ollama_model()
@@ -326,10 +420,17 @@ def _generate_ollama(system_prompt: str, user_prompt: str) -> str:
     return (data.get("message") or {}).get("content", "")
 
 
-def _generate_text(system_prompt: str, user_prompt: str) -> str:
-    provider = get_provider()
+VALID_PROVIDERS = {"anthropic", "openai", "gemini", "ollama"}
+
+
+def _generate_text(system_prompt: str, user_prompt: str, provider: str | None = None) -> str:
+    provider = provider if provider in VALID_PROVIDERS else get_provider()
     if provider == "ollama":
         return _generate_ollama(system_prompt, user_prompt)
+    if provider == "openai":
+        return _generate_openai(system_prompt, user_prompt)
+    if provider == "gemini":
+        return _generate_gemini(system_prompt, user_prompt)
     return _generate_anthropic(system_prompt, user_prompt)
 
 
@@ -340,12 +441,13 @@ def generate_posts(
     platform_ids: list[str],
     variants: int = 1,
     length: int | None = None,
+    provider: str | None = None,
 ) -> tuple[list[dict], list[str]]:
     variants = max(1, min(variants, 3))
 
     if not platform_ids:
         system_prompt, user_prompt = _build_prompts_for_platform(topic, brief, tone, None, variants, length)
-        return _parse_variants(_generate_text(system_prompt, user_prompt)), []
+        return _parse_variants(_generate_text(system_prompt, user_prompt, provider)), []
 
     results: list[dict] = []
     errors: list[str] = []
@@ -355,7 +457,7 @@ def generate_posts(
         platform = _get_platform_context(platform_id)
         system_prompt, user_prompt = _build_prompts_for_platform(topic, brief, tone, platform, variants, length)
         try:
-            text = _generate_text(system_prompt, user_prompt)
+            text = _generate_text(system_prompt, user_prompt, provider)
             for item in _parse_variants(text):
                 item["platform_id"] = platform_id
                 item["platform_name"] = platform["name"]

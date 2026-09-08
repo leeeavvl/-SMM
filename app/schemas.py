@@ -44,6 +44,10 @@ class SaleCreate(BaseModel):
 
 class SettingsUpdate(BaseModel):
     anthropic_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    openai_model: Optional[str] = None
+    gemini_api_key: Optional[str] = None
+    gemini_model: Optional[str] = None
     ai_provider: Optional[str] = None
     ollama_model: Optional[str] = None
     ollama_base_url: Optional[str] = None
@@ -62,6 +66,7 @@ class AIGenerateRequest(BaseModel):
     platform_ids: list[str] = []
     variants: int = 1
     length: Optional[int] = Field(default=None, gt=0, le=20000)
+    provider: Optional[str] = None  # "anthropic" | "ollama" — переопределяет провайдера из настроек для этой генерации
 
 
 class PlanRowSpec(BaseModel):

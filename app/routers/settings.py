@@ -5,7 +5,17 @@ import os
 import httpx
 from fastapi import APIRouter, HTTPException
 
-from app.ai import DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_URL, get_ollama_base_url, get_ollama_model, get_provider
+from app.ai import (
+    DEFAULT_GEMINI_MODEL,
+    DEFAULT_OLLAMA_MODEL,
+    DEFAULT_OLLAMA_URL,
+    DEFAULT_OPENAI_MODEL,
+    get_gemini_model,
+    get_ollama_base_url,
+    get_ollama_model,
+    get_openai_model,
+    get_provider,
+)
 from app.database import DEFAULT_BRAND_DESCRIPTION, DEFAULT_BRAND_NAME, get_setting, set_setting
 from app.google_sheets import SheetsConfigError, SheetsSyncError, test_connection
 from app.schemas import SettingsUpdate
@@ -15,8 +25,14 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 def _current_settings() -> dict:
     has_key = bool(get_setting("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY"))
+    has_openai_key = bool(get_setting("openai_api_key") or os.environ.get("OPENAI_API_KEY"))
+    has_gemini_key = bool(get_setting("gemini_api_key") or os.environ.get("GEMINI_API_KEY"))
     return {
         "anthropic_api_key_set": has_key,
+        "openai_api_key_set": has_openai_key,
+        "openai_model": get_openai_model(),
+        "gemini_api_key_set": has_gemini_key,
+        "gemini_model": get_gemini_model(),
         "ai_provider": get_provider(),
         "ollama_model": get_ollama_model(),
         "ollama_base_url": get_ollama_base_url(),
@@ -38,6 +54,14 @@ def get_settings():
 def update_settings(payload: SettingsUpdate):
     if payload.anthropic_api_key is not None:
         set_setting("anthropic_api_key", payload.anthropic_api_key.strip())
+    if payload.openai_api_key is not None:
+        set_setting("openai_api_key", payload.openai_api_key.strip())
+    if payload.openai_model is not None:
+        set_setting("openai_model", payload.openai_model.strip() or DEFAULT_OPENAI_MODEL)
+    if payload.gemini_api_key is not None:
+        set_setting("gemini_api_key", payload.gemini_api_key.strip())
+    if payload.gemini_model is not None:
+        set_setting("gemini_model", payload.gemini_model.strip() or DEFAULT_GEMINI_MODEL)
     if payload.ai_provider is not None:
         set_setting("ai_provider", payload.ai_provider.strip())
     if payload.ollama_model is not None:

@@ -67,6 +67,16 @@
               <label>Длина поста (символов)</label>
               <input type="number" id="hero-length" placeholder="Например: 800" min="1" max="20000">
             </div>
+            <div class="ai-col ai-col-narrow">
+              <label>Нейросеть для этого поста</label>
+              <select id="hero-provider">
+                <option value="">По умолчанию (из настроек)</option>
+                <option value="anthropic">Claude (Anthropic)</option>
+                <option value="openai">ChatGPT (OpenAI)</option>
+                <option value="gemini">Google Gemini (бесплатно)</option>
+                <option value="ollama">Ollama (локально)</option>
+              </select>
+            </div>
             <div class="ai-col">
               <p class="hint" style="margin-top:28px;">Необязательно — если оставить пустым, длина будет по ТЗ платформы. Если указать, это значение станет приоритетным.</p>
             </div>
@@ -255,10 +265,12 @@
 
       <div class="settings-block" style="margin-top:16px;">
         <h2>Источник ИИ-генерации постов</h2>
-        <p class="hint">Выберите, чем генерировать посты: платным облачным Claude или бесплатной локальной моделью через Ollama.</p>
+        <p class="hint">Выберите, чем генерировать посты: платным облачным Claude, платным ChatGPT (OpenAI), Google Gemini (есть бесплатный уровень) или бесплатной локальной моделью через Ollama.</p>
         <label>Провайдер</label>
         <select id="settings-provider">
           <option value="anthropic">Claude (Anthropic API, платно)</option>
+          <option value="openai">ChatGPT (OpenAI API, платно)</option>
+          <option value="gemini">Google Gemini (есть бесплатный уровень)</option>
           <option value="ollama">Ollama — локальная модель (бесплатно)</option>
         </select>
 
@@ -266,6 +278,23 @@
           <label>API-ключ Anthropic</label>
           <input type="password" id="settings-api-key" placeholder="sk-ant-...">
           <div id="settings-anthropic-status" class="hint"></div>
+        </div>
+
+        <div id="settings-openai-block">
+          <label>API-ключ OpenAI</label>
+          <input type="password" id="settings-openai-api-key" placeholder="sk-...">
+          <label>Модель</label>
+          <input type="text" id="settings-openai-model" placeholder="gpt-4o-mini">
+          <div id="settings-openai-status" class="hint"></div>
+        </div>
+
+        <div id="settings-gemini-block">
+          <label>API-ключ Google Gemini</label>
+          <input type="password" id="settings-gemini-api-key" placeholder="AIza...">
+          <p class="hint">Бесплатный ключ: зайдите на <strong>ai.google.dev</strong> → Get API key. Бесплатный уровень имеет дневной лимит запросов, платить не нужно.</p>
+          <label>Модель</label>
+          <input type="text" id="settings-gemini-model" placeholder="gemini-2.0-flash">
+          <div id="settings-gemini-status" class="hint"></div>
         </div>
 
         <div id="settings-ollama-block">

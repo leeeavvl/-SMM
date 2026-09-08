@@ -961,6 +961,8 @@ async function deleteSale(id) {
 // ---------- Settings ----------
 function toggleProviderBlocks(provider) {
   document.getElementById("settings-anthropic-block").style.display = provider === "anthropic" ? "" : "none";
+  document.getElementById("settings-openai-block").style.display = provider === "openai" ? "" : "none";
+  document.getElementById("settings-gemini-block").style.display = provider === "gemini" ? "" : "none";
   document.getElementById("settings-ollama-block").style.display = provider === "ollama" ? "" : "none";
 }
 
@@ -974,6 +976,20 @@ async function loadSettings() {
     ? "Ключ сохранён и активен."
     : "Ключ ещё не задан — генерация через Claude недоступна.";
   document.getElementById("settings-api-key").value = "";
+
+  const openaiStatus = document.getElementById("settings-openai-status");
+  openaiStatus.textContent = s.openai_api_key_set
+    ? "Ключ сохранён и активен."
+    : "Ключ ещё не задан — генерация через ChatGPT недоступна.";
+  document.getElementById("settings-openai-api-key").value = "";
+  document.getElementById("settings-openai-model").value = s.openai_model;
+
+  const geminiStatus = document.getElementById("settings-gemini-status");
+  geminiStatus.textContent = s.gemini_api_key_set
+    ? "Ключ сохранён и активен."
+    : "Ключ ещё не задан — генерация через Gemini недоступна.";
+  document.getElementById("settings-gemini-api-key").value = "";
+  document.getElementById("settings-gemini-model").value = s.gemini_model;
 
   document.getElementById("settings-ollama-url").value = s.ollama_base_url;
   document.getElementById("settings-ollama-model").value = s.ollama_model;
@@ -1058,6 +1074,14 @@ document.getElementById("btn-save-settings").addEventListener("click", async () 
   if (provider === "anthropic") {
     const key = document.getElementById("settings-api-key").value.trim();
     if (key) payload.anthropic_api_key = key;
+  } else if (provider === "openai") {
+    const key = document.getElementById("settings-openai-api-key").value.trim();
+    if (key) payload.openai_api_key = key;
+    payload.openai_model = document.getElementById("settings-openai-model").value.trim() || "gpt-4o-mini";
+  } else if (provider === "gemini") {
+    const key = document.getElementById("settings-gemini-api-key").value.trim();
+    if (key) payload.gemini_api_key = key;
+    payload.gemini_model = document.getElementById("settings-gemini-model").value.trim() || "gemini-2.0-flash";
   } else {
     payload.ollama_base_url = document.getElementById("settings-ollama-url").value.trim() || "http://localhost:11434";
     payload.ollama_model = document.getElementById("settings-ollama-model").value.trim() || "qwen2.5:7b";
@@ -1092,6 +1116,7 @@ document.getElementById("hero-generate-btn").addEventListener("click", async () 
     platform_ids: platformIds,
     variants: parseInt(document.getElementById("hero-variants").value, 10),
     length: lengthValue ? parseInt(lengthValue, 10) : null,
+    provider: document.getElementById("hero-provider").value || null,
   };
   const results = document.getElementById("hero-ai-results");
   results.innerHTML = `<div class="spinner">Генерация... это может занять несколько секунд</div>`;
