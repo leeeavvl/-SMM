@@ -662,6 +662,42 @@ h2 { font-size: 16px; color: var(--muted); margin: 28px 0 12px; }
   margin-top: -1px;
 }
 
+.brandbook-result { margin-top: 14px; }
+.brandbook-swatches { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.brandbook-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  position: relative;
+}
+.brandbook-swatch::after {
+  content: attr(data-hex);
+  position: absolute;
+  bottom: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: var(--muted);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .1s;
+}
+.brandbook-swatch:hover::after { opacity: 1; }
+
+.canva-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.canva-fetch-panel {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.canva-fetch-panel .hint { margin-bottom: 8px; }
+.btn.danger { border-color: var(--danger); color: var(--danger); }
+
 .post-editor-actions { justify-content: space-between; }
 .post-editor-actions-right { display: flex; gap: 8px; }
 

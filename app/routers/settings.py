@@ -3,8 +3,9 @@ from __future__ import annotations
 import os
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
+from app import brandbook
 from app.ai import (
     DEFAULT_GEMINI_MODEL,
     DEFAULT_OLLAMA_MODEL,
@@ -42,6 +43,7 @@ def _current_settings() -> dict:
         "google_sheet_worksheet": get_setting("google_sheet_worksheet") or "",
         "google_service_account_path": get_setting("google_service_account_path") or "",
         "google_sheets_auto_sync": (get_setting("google_sheets_auto_sync") or "0") == "1",
+        "brand_book": brandbook.get_brand_profile(),
     }
 
 
@@ -94,6 +96,20 @@ def ollama_status():
         return {"reachable": True, "models": models}
     except httpx.HTTPError:
         return {"reachable": False, "models": []}
+
+
+@router.post("/brand-book")
+async def upload_brand_book(file: UploadFile = File(...)):
+    if file.content_type != "application/pdf":
+        raise HTTPException(400, "Загрузите брендбук в формате PDF")
+    data = await file.read()
+    if len(data) > 20 * 1024 * 1024:
+        raise HTTPException(400, "Файл слишком большой (максимум 20 МБ)")
+    try:
+        profile = brandbook.parse_and_store_brand_book(data)
+    except Exception as exc:
+        raise HTTPException(400, f"Не удалось разобрать PDF: {exc}") from exc
+    return {"uploaded": True, **profile}
 
 
 @router.get("/google-sheets-status")

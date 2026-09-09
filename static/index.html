@@ -349,6 +349,37 @@
         </div>
         <div id="settings-gsheet-status" class="hint"></div>
       </div>
+
+      <div class="settings-block" style="margin-top:16px;">
+        <h2>📘 Брендбук</h2>
+        <p class="hint">Загрузите PDF с брендбуком — приложение достанет фирменные цвета и шрифты и будет учитывать их при генерации ИИ-изображений и при создании дизайнов в Canva.</p>
+        <label>Файл брендбука (.pdf)</label>
+        <input type="file" id="brandbook-file" accept=".pdf,application/pdf">
+        <div class="modal-actions" style="justify-content:flex-start;">
+          <button class="btn primary" id="btn-upload-brandbook">Загрузить и разобрать</button>
+        </div>
+        <div id="brandbook-status" class="hint"></div>
+        <div id="brandbook-result" class="brandbook-result" hidden>
+          <div class="brandbook-swatches" id="brandbook-swatches"></div>
+          <div id="brandbook-fonts" class="hint"></div>
+          <div id="brandbook-style" class="hint"></div>
+        </div>
+      </div>
+
+      <div class="settings-block" style="margin-top:16px;">
+        <h2>🎨 Canva</h2>
+        <p class="hint">Подключите Canva, чтобы создавать изображения для постов прямо из редактора — с сохранением бренд-стиля, без выхода из приложения.</p>
+        <label>Client ID</label>
+        <input type="text" id="settings-canva-client-id" placeholder="OC-...">
+        <label>Client Secret</label>
+        <input type="password" id="settings-canva-client-secret" placeholder="cnvca...">
+        <div class="modal-actions" style="justify-content:flex-start; gap:8px;">
+          <button class="btn primary" id="btn-save-canva-credentials">Сохранить ключи</button>
+          <button class="btn" id="btn-connect-canva">Подключить Canva</button>
+          <button class="btn danger" id="btn-disconnect-canva" hidden>Отключить</button>
+        </div>
+        <div id="settings-canva-status" class="hint"></div>
+      </div>
     </section>
   </main>
 </div>
@@ -447,6 +478,16 @@
     <div id="media-preview" class="media-preview" hidden></div>
     <label>Или ссылка на медиа</label>
     <input type="text" id="content-media" placeholder="https://...">
+
+    <div class="canva-row">
+      <button type="button" class="btn" id="btn-create-canva">🎨 Создать изображение в Canva</button>
+      <span id="canva-status-hint" class="hint"></span>
+    </div>
+    <div id="canva-brand-swatches" class="brandbook-swatches" hidden></div>
+    <div id="canva-fetch-panel" class="canva-fetch-panel" hidden>
+      <p class="hint">Дизайн открыт в новой вкладке. Когда закончите оформление в Canva — нажмите кнопку ниже, чтобы забрать готовое изображение.</p>
+      <button type="button" class="btn primary small" id="btn-fetch-canva-design">✅ Забрать готовое изображение</button>
+    </div>
 
     <button type="button" class="settings-toggle" id="btn-toggle-post-settings">⚙ Настройки поста <span id="post-settings-caret">▾</span></button>
     <div class="post-settings-panel" id="post-settings-panel" hidden>

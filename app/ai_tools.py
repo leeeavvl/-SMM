@@ -27,6 +27,8 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 
+from app import brandbook
+
 from app.ai import (
     RUSSIAN_DESLOP_RULES,
     AIConfigError,
@@ -515,6 +517,9 @@ def run_tool(tool_id: str, inputs: dict[str, Any], provider: str | None = None) 
 
     if tool.kind == "image_generate":
         prompt = inputs.get("prompt") or _render(tool.instruction, inputs)
+        visual_context = brandbook.brand_visual_context()
+        if visual_context:
+            prompt = f"{prompt}\n\nСоблюдай фирменный стиль бренда: {visual_context}"
         return _generate_image_openai(prompt)
 
     if tool.kind == "image_caption":

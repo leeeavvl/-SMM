@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import init_db
-from app.routers import ai, analysis, analytics, content, knowledge_base, plan, platforms, publish, settings, stats
+from app.routers import ai, analysis, analytics, canva, content, knowledge_base, plan, platforms, publish, settings, stats
 from app.scheduler import start_scheduler
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -34,6 +34,7 @@ app.include_router(plan.router)
 app.include_router(stats.router)
 app.include_router(analysis.router)
 app.include_router(knowledge_base.router)
+app.include_router(canva.router)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

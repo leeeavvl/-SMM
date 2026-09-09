@@ -527,6 +527,10 @@ function openContentModal(id) {
   document.getElementById("post-settings-caret").textContent = "▾";
   document.getElementById("emoji-picker").hidden = true;
   updateCharCounter();
+  currentCanvaDesignId = null;
+  document.getElementById("canva-fetch-panel").hidden = true;
+  document.getElementById("canva-status-hint").textContent = "";
+  api("/api/settings").then((s) => renderBrandSwatches(document.getElementById("canva-brand-swatches"), s.brand_book?.colors || []));
 
   if (!state.platforms.length) fetchPlatforms().then(renderContentPlatformChecks);
   else renderContentPlatformChecks();
@@ -1007,6 +1011,13 @@ async function loadSettings() {
   document.getElementById("settings-gsheet-worksheet").value = s.google_sheet_worksheet;
   document.getElementById("settings-gsheet-autosync").checked = s.google_sheets_auto_sync;
   document.getElementById("settings-gsheet-status").textContent = "";
+
+  document.getElementById("settings-canva-client-id").value = "";
+  document.getElementById("settings-canva-client-secret").value = "";
+  loadCanvaSettings();
+
+  document.getElementById("brandbook-status").textContent = "";
+  renderBrandBookInfo(s.brand_book);
 }
 
 document.getElementById("btn-save-gsheet").addEventListener("click", async () => {
@@ -1752,6 +1763,191 @@ document.getElementById("btn-use-assistant-result").addEventListener("click", ()
     document.getElementById("content-title").value = currentAssistantTool.title;
   }
 });
+
+// ---------- Brand book ----------
+function renderBrandSwatches(container, colors) {
+  container.innerHTML = colors
+    .map(
+      (hex) =>
+        `<div class="brandbook-swatch" style="background:${hex}" data-hex="${hex}" title="${hex} (клик — скопировать)"></div>`
+    )
+    .join("");
+  container.querySelectorAll(".brandbook-swatch").forEach((el) => {
+    el.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(el.dataset.hex);
+        toast(`Скопировано: ${el.dataset.hex}`);
+      } catch (e) {
+        // буфер обмена недоступен — не критично
+      }
+    });
+  });
+  container.hidden = !colors.length;
+}
+
+function renderBrandBookInfo(brandBook) {
+  const resultBox = document.getElementById("brandbook-result");
+  if (!brandBook || !brandBook.uploaded) {
+    resultBox.hidden = true;
+    document.getElementById("canva-brand-swatches").hidden = true;
+    return;
+  }
+  renderBrandSwatches(document.getElementById("brandbook-swatches"), brandBook.colors || []);
+  document.getElementById("brandbook-fonts").textContent = brandBook.fonts?.length
+    ? `Шрифты: ${brandBook.fonts.join(", ")}`
+    : "";
+  document.getElementById("brandbook-style").textContent = brandBook.style_summary || "";
+  resultBox.hidden = false;
+
+  renderBrandSwatches(document.getElementById("canva-brand-swatches"), brandBook.colors || []);
+}
+
+document.getElementById("btn-upload-brandbook").addEventListener("click", async () => {
+  const fileInput = document.getElementById("brandbook-file");
+  const file = fileInput.files?.[0];
+  const status = document.getElementById("brandbook-status");
+  if (!file) {
+    toast("Выберите PDF-файл брендбука", true);
+    return;
+  }
+  status.textContent = "Разбираю брендбук (это может занять до минуты)...";
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/settings/brand-book", { method: "POST", body: formData });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Ошибка загрузки");
+    const data = await res.json();
+    status.textContent = `Готово: найдено ${data.colors.length} цветов${data.fonts.length ? `, ${data.fonts.length} шрифт(ов)` : ""}.`;
+    renderBrandBookInfo(data);
+    toast("Брендбук разобран");
+  } catch (e) {
+    status.textContent = "";
+    toast(e.message, true);
+  }
+});
+
+// ---------- Canva ----------
+async function loadCanvaSettings() {
+  const status = await api("/api/canva/status");
+  const el = document.getElementById("settings-canva-status");
+  const btnConnect = document.getElementById("btn-connect-canva");
+  const btnDisconnect = document.getElementById("btn-disconnect-canva");
+
+  if (status.connected) {
+    el.textContent = "Canva подключена и готова к использованию.";
+    btnConnect.textContent = "Переподключить Canva";
+    btnDisconnect.hidden = false;
+  } else if (status.configured) {
+    el.textContent = "Ключи сохранены, но аккаунт Canva ещё не подключён — нажмите «Подключить Canva».";
+    btnConnect.textContent = "Подключить Canva";
+    btnDisconnect.hidden = true;
+  } else {
+    el.textContent = "Укажите Client ID и Client Secret из canva.com/developers, затем сохраните и подключите аккаунт.";
+    btnConnect.textContent = "Подключить Canva";
+    btnDisconnect.hidden = true;
+  }
+}
+
+document.getElementById("btn-save-canva-credentials").addEventListener("click", async () => {
+  const client_id = document.getElementById("settings-canva-client-id").value.trim();
+  const client_secret = document.getElementById("settings-canva-client-secret").value.trim();
+  if (!client_id || !client_secret) {
+    toast("Укажите и Client ID, и Client Secret", true);
+    return;
+  }
+  try {
+    await api("/api/canva/credentials", { method: "POST", body: JSON.stringify({ client_id, client_secret }) });
+    toast("Ключи Canva сохранены");
+    loadCanvaSettings();
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+document.getElementById("btn-connect-canva").addEventListener("click", () => {
+  window.location.href = "/api/canva/oauth/start";
+});
+
+document.getElementById("btn-disconnect-canva").addEventListener("click", async () => {
+  await api("/api/canva/disconnect", { method: "POST" });
+  toast("Canva отключена");
+  loadCanvaSettings();
+});
+
+let currentCanvaDesignId = null;
+
+document.getElementById("btn-create-canva").addEventListener("click", async () => {
+  const btn = document.getElementById("btn-create-canva");
+  const hint = document.getElementById("canva-status-hint");
+  const title = document.getElementById("content-title").value.trim() || "Пост для соцсетей";
+
+  btn.disabled = true;
+  hint.textContent = "Создаю дизайн...";
+  try {
+    const { design_id, edit_url } = await api("/api/canva/designs", {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    });
+    currentCanvaDesignId = design_id;
+    window.open(edit_url, "_blank");
+    hint.textContent = "Дизайн открыт в Canva";
+    document.getElementById("canva-fetch-panel").hidden = false;
+  } catch (e) {
+    hint.textContent = "";
+    if (e.message.includes("не настроен") || e.message.includes("не подключена")) {
+      toast(`${e.message} Откройте «Настройки» → Canva.`, true);
+    } else {
+      toast(e.message, true);
+    }
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+async function pollCanvaExport(jobId) {
+  const hint = document.getElementById("canva-status-hint");
+  for (let i = 0; i < 20; i++) {
+    const result = await api(`/api/canva/exports/${jobId}`);
+    if (result.status === "success") return result;
+    if (result.status === "failed") throw new Error(result.error || "Экспорт не удался");
+    hint.textContent = "Ещё готовится...";
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error("Экспорт занимает необычно долго — попробуйте забрать чуть позже");
+}
+
+document.getElementById("btn-fetch-canva-design").addEventListener("click", async () => {
+  if (!currentCanvaDesignId) return;
+  const btn = document.getElementById("btn-fetch-canva-design");
+  const hint = document.getElementById("canva-status-hint");
+  btn.disabled = true;
+  hint.textContent = "Забираю готовое изображение...";
+  try {
+    let result = await api(`/api/canva/designs/${currentCanvaDesignId}/export`, { method: "POST" });
+    if (result.status === "in_progress") result = await pollCanvaExport(result.job_id);
+    document.getElementById("content-media").value = result.url;
+    setMediaPreview(result.url);
+    document.getElementById("canva-fetch-panel").hidden = true;
+    hint.textContent = "Изображение из Canva добавлено к посту";
+    toast("Изображение из Canva добавлено");
+  } catch (e) {
+    toast(e.message, true);
+    hint.textContent = "";
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Обработка возврата из OAuth Canva (редирект с ?canva_connected=1 / ?canva_error=...)
+(function handleCanvaOAuthReturn() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("view") === "settings") switchView("settings");
+  if (params.get("canva_connected")) toast("Canva подключена");
+  if (params.get("canva_error")) toast(`Canva: ${params.get("canva_error")}`, true);
+  if (params.has("canva_connected") || params.has("canva_error") || params.has("view")) {
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+})();
 
 // ---------- Modals: закрытие по клику на фон и по Escape ----------
 document.querySelectorAll(".modal").forEach((modal) => {
