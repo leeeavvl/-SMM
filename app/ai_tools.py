@@ -158,13 +158,15 @@ TOOL_DEFS: list[Tool] = [
     ),
     Tool(
         "photo_upscale", "photo", "🖼️", "Улучшить качество фото",
-        "Увеличьте изображение с помощью нейросети без потери качества",
+        "Откроется в Canva — воспользуйтесь её инструментом Enhance/Upscale и заберите результат обратно",
         [_f("image", "Изображение", type="image", required=True)],
-        kind="image_generate",  # placeholder kind, never reached — available=False
-        available=False,
-        unavailable_reason="Апскейл изображений (увеличение без потери качества) — отдельная задача "
-                            "суперразрешения, её не умеет ни один из подключённых текстовых провайдеров "
-                            "(Claude/ChatGPT/Gemini). Нужен отдельный специализированный сервис.",
+        kind="canva_edit",
+        # Апскейл (увеличение без потери качества) — отдельная задача суперразрешения,
+        # её не умеет ни один из подключённых текстовых провайдеров (Claude/ChatGPT/
+        # Gemini) и её нет в публичном Canva Connect API. Но сама Canva умеет это
+        # у себя в редакторе (Enhance photo) — поэтому вместо имитации собственной
+        # генерации мы загружаем фото в Canva как asset и открываем редактор, где
+        # пользователь применяет реальный апскейл Canva вручную, а мы забираем результат.
     ),
     Tool(
         "rewrite_text", "text", "❄️", "Переписать текст",
@@ -521,6 +523,12 @@ def run_tool(tool_id: str, inputs: dict[str, Any], provider: str | None = None) 
         if visual_context:
             prompt = f"{prompt}\n\nСоблюдай фирменный стиль бренда: {visual_context}"
         return _generate_image_openai(prompt)
+
+    if tool.kind == "canva_edit":
+        raise ToolError(
+            "Этот инструмент открывается в Canva — используйте кнопку «Открыть в Canva» "
+            "в карточке инструмента, а не обычную генерацию."
+        )
 
     if tool.kind == "image_caption":
         image_path = _local_path_for_upload_url(str(inputs.get("image", "")))

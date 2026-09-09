@@ -1640,14 +1640,52 @@ function assistantFieldHtml(field) {
 
 let currentAssistantTool = null;
 
+async function openImageInCanvaFlow(mediaUrl, title) {
+  const resultBox = document.getElementById("assistant-tool-result-box");
+  const resultEl = document.getElementById("assistant-tool-result");
+  resultBox.hidden = false;
+  resultEl.innerHTML = `<div class="spinner">Загружаю изображение в Canva...</div>`;
+  try {
+    const { asset_id } = await api("/api/canva/assets", { method: "POST", body: JSON.stringify({ media_url: mediaUrl }) });
+    const { design_id, edit_url } = await api("/api/canva/designs", {
+      method: "POST",
+      body: JSON.stringify({ title, asset_id }),
+    });
+    window.open(edit_url, "_blank");
+    resultEl.innerHTML = `
+      <p class="hint">Изображение открыто в Canva — доработайте его там (для «Улучшить качество фото» используйте Canva-инструмент Enhance/Upscale). Когда закончите — нажмите кнопку ниже.</p>
+      <button type="button" class="btn primary small" id="btn-fetch-assistant-canva">✅ Забрать готовое изображение</button>
+    `;
+    document.getElementById("btn-fetch-assistant-canva").addEventListener("click", async (e) => {
+      const btn = e.target;
+      btn.disabled = true;
+      resultEl.querySelector(".hint").textContent = "Забираю готовое изображение...";
+      try {
+        let result = await api(`/api/canva/designs/${design_id}/export`, { method: "POST" });
+        if (result.status === "in_progress") result = await pollCanvaExport(result.job_id);
+        resultEl.innerHTML = `<img src="${result.url}" alt="">`;
+        toast("Изображение из Canva забрано");
+      } catch (err) {
+        toast(err.message, true);
+        btn.disabled = false;
+      }
+    });
+  } catch (e) {
+    resultEl.innerHTML = "";
+    toast(e.message, true);
+  }
+}
+
 function openAssistantToolModal(tool) {
   currentAssistantTool = tool;
   document.getElementById("assistant-tool-title").textContent = `${tool.icon} ${tool.title}`;
   document.getElementById("assistant-tool-description").textContent = tool.description;
   document.getElementById("assistant-tool-fields").innerHTML = tool.fields.map(assistantFieldHtml).join("");
   document.getElementById("assistant-tool-provider").value = "";
+  document.getElementById("assistant-tool-provider").hidden = tool.kind === "canva_edit";
   document.getElementById("assistant-tool-result-box").hidden = true;
   document.getElementById("assistant-tool-result").innerHTML = "";
+  document.getElementById("btn-run-assistant-tool").textContent = tool.kind === "canva_edit" ? "🎨 Открыть в Canva" : "✨ Сгенерировать";
 
   document.querySelectorAll('#assistant-tool-fields [data-image-field]').forEach((zone) => {
     const key = zone.dataset.imageField;
@@ -1711,6 +1749,16 @@ document.getElementById("btn-run-assistant-tool").addEventListener("click", asyn
   }
 
   const btn = document.getElementById("btn-run-assistant-tool");
+
+  if (currentAssistantTool.kind === "canva_edit") {
+    btn.disabled = true;
+    btn.textContent = "Открываю Canva...";
+    await openImageInCanvaFlow(inputs.image, currentAssistantTool.title);
+    btn.disabled = false;
+    btn.textContent = "🎨 Открыть в Canva";
+    return;
+  }
+
   const provider = document.getElementById("assistant-tool-provider").value || null;
   btn.disabled = true;
   btn.textContent = "Генерация...";
@@ -1722,7 +1770,15 @@ document.getElementById("btn-run-assistant-tool").addEventListener("click", asyn
     const resultBox = document.getElementById("assistant-tool-result-box");
     const resultEl = document.getElementById("assistant-tool-result");
     if (data.image_url) {
-      resultEl.innerHTML = `<img src="${data.image_url}" alt="">`;
+      resultEl.innerHTML = `
+        <img src="${data.image_url}" alt="">
+        <div class="modal-actions" style="justify-content:flex-start; margin-top:10px;">
+          <button type="button" class="btn small" id="btn-refine-in-canva">🎨 Доработать в Canva</button>
+        </div>
+      `;
+      document.getElementById("btn-refine-in-canva").addEventListener("click", () => {
+        openImageInCanvaFlow(data.image_url, currentAssistantTool.title);
+      });
     } else {
       resultEl.textContent = data.result || "";
     }
@@ -1731,7 +1787,7 @@ document.getElementById("btn-run-assistant-tool").addEventListener("click", asyn
     toast(e.message, true);
   } finally {
     btn.disabled = false;
-    btn.textContent = "✨ Сгенерировать";
+    btn.textContent = currentAssistantTool.kind === "canva_edit" ? "🎨 Открыть в Canva" : "✨ Сгенерировать";
   }
 });
 

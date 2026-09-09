@@ -174,17 +174,17 @@ def _headers() -> dict:
     return {"Authorization": f"Bearer {_access_token()}"}
 
 
-def create_design(title: str, width: int = 1080, height: int = 1080) -> dict:
+def create_design(title: str, width: int = 1080, height: int = 1080, asset_id: str | None = None) -> dict:
     """По умолчанию — квадрат 1080x1080: это основной размер поста, указанный
     почти во всех макетах в брендбуке «Карьерного юриста» (при желании можно
-    передать другой размер под конкретный вид поста)."""
+    передать другой размер под конкретный вид поста). Если передан asset_id —
+    дизайн создаётся уже с этим изображением на холсте (например, чтобы
+    доработать/улучшить его средствами самой Canva)."""
+    body: dict = {"design_type": {"type": "custom", "width": width, "height": height}, "title": title[:50]}
+    if asset_id:
+        body["asset_id"] = asset_id
     try:
-        resp = httpx.post(
-            f"{API_BASE}/designs",
-            headers=_headers(),
-            json={"design_type": {"type": "custom", "width": width, "height": height}, "title": title[:50]},
-            timeout=30,
-        )
+        resp = httpx.post(f"{API_BASE}/designs", headers=_headers(), json=body, timeout=30)
         resp.raise_for_status()
     except httpx.HTTPStatusError as exc:
         raise CanvaAPIError(f"Canva не смогла создать дизайн: {exc.response.text}") from exc
@@ -195,6 +195,42 @@ def create_design(title: str, width: int = 1080, height: int = 1080) -> dict:
         "edit_url": design["urls"]["edit_url"],
         "view_url": design["urls"].get("view_url"),
     }
+
+
+def upload_asset(file_path: Path, name: str, max_wait_seconds: float = 30.0) -> str:
+    """Загружает локальный файл в Canva как asset (для последующего использования
+    как исходное изображение при создании дизайна). Возвращает asset_id."""
+    metadata = _b64url(name.encode())
+    try:
+        resp = httpx.post(
+            f"{API_BASE}/asset-uploads",
+            headers={
+                **_headers(),
+                "Content-Type": "application/octet-stream",
+                "Asset-Upload-Metadata": f'{{"name_base64":"{metadata}"}}',
+            },
+            content=file_path.read_bytes(),
+            timeout=60,
+        )
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise CanvaAPIError(f"Canva не смогла принять файл: {exc.response.text}") from exc
+
+    job_id = resp.json()["job"]["id"]
+    deadline = time.time() + max_wait_seconds
+    while time.time() < deadline:
+        try:
+            status_resp = httpx.get(f"{API_BASE}/asset-uploads/{job_id}", headers=_headers(), timeout=30)
+            status_resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise CanvaAPIError(f"Не удалось проверить статус загрузки: {exc.response.text}") from exc
+        job = status_resp.json()["job"]
+        if job["status"] == "success":
+            return job["asset"]["id"]
+        if job["status"] == "failed":
+            raise CanvaAPIError((job.get("error") or {}).get("message", "Загрузка файла в Canva не удалась"))
+        time.sleep(1.5)
+    raise CanvaAPIError("Загрузка файла в Canva заняла слишком много времени")
 
 
 def start_export(design_id: str) -> str:

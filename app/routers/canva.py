@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
@@ -8,6 +10,8 @@ from app import canva
 from app.database import set_setting
 
 router = APIRouter(prefix="/api/canva", tags=["canva"])
+
+UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "static" / "uploads"
 
 
 class CanvaCredentials(BaseModel):
@@ -19,6 +23,11 @@ class CreateDesignRequest(BaseModel):
     title: str = "Пост для соцсетей"
     width: int = Field(default=1080, ge=40, le=8000)
     height: int = Field(default=1080, ge=40, le=8000)
+    asset_id: str | None = None
+
+
+class UploadAssetRequest(BaseModel):
+    media_url: str = Field(min_length=1)
 
 
 @router.get("/status")
@@ -67,11 +76,27 @@ def disconnect():
 @router.post("/designs")
 def create_design(payload: CreateDesignRequest):
     try:
-        return canva.create_design(payload.title, payload.width, payload.height)
+        return canva.create_design(payload.title, payload.width, payload.height, payload.asset_id)
     except canva.CanvaConfigError as exc:
         raise HTTPException(400, str(exc)) from exc
     except canva.CanvaAPIError as exc:
         raise HTTPException(502, str(exc)) from exc
+
+
+@router.post("/assets")
+def upload_asset(payload: UploadAssetRequest):
+    if not payload.media_url.startswith("/static/uploads/"):
+        raise HTTPException(400, "Сначала загрузите изображение через форму (drag & drop).")
+    path = UPLOAD_DIR / Path(payload.media_url).name
+    if not path.is_file():
+        raise HTTPException(404, "Файл не найден — попробуйте загрузить его заново.")
+    try:
+        asset_id = canva.upload_asset(path, path.name)
+    except canva.CanvaConfigError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except canva.CanvaAPIError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return {"asset_id": asset_id}
 
 
 @router.post("/designs/{design_id}/export")
