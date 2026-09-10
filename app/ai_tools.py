@@ -390,7 +390,7 @@ TOOL_DEFS: list[Tool] = [
     ),
     Tool(
         "image_from_text", "photo", "🖼️", "Изображение по тексту",
-        "Создайте изображение на основе текста",
+        "Создайте изображение на основе текста (нужен рабочий ключ OpenAI в «Настройках»)",
         [_f("prompt", "Описание изображения", type="textarea", required=True)],
         kind="image_generate",
     ),

@@ -1740,8 +1740,9 @@ function openAssistantToolModal(tool) {
   document.getElementById("assistant-tool-title").textContent = `${tool.icon} ${tool.title}`;
   document.getElementById("assistant-tool-description").textContent = tool.description;
   document.getElementById("assistant-tool-fields").innerHTML = tool.fields.map(assistantFieldHtml).join("");
+  const providerIrrelevant = tool.kind === "canva_edit" || tool.kind === "image_generate";
   document.getElementById("assistant-tool-provider").value = "";
-  document.getElementById("assistant-tool-provider").hidden = tool.kind === "canva_edit";
+  document.getElementById("assistant-tool-provider").hidden = providerIrrelevant;
   document.getElementById("assistant-tool-result-box").hidden = true;
   document.getElementById("assistant-tool-result").innerHTML = "";
   document.getElementById("btn-run-assistant-tool").textContent = tool.kind === "canva_edit" ? "🎨 Открыть в Canva" : "✨ Сгенерировать";
