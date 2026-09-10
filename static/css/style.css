@@ -1,14 +1,16 @@
-/* Палитра и шрифты — взяты напрямую из CSS-токенов сайта legalcareerist.ru
-   (--color-ink:#283953, --color-gold:#45608a, --color-gold-light:#6f93c4,
-   --color-paper:#fff; шрифты Inter + PT Sans), чтобы приложение выглядело
-   как часть того же бренда, что и публичный сайт. */
+/* Палитра и шрифты — сверены напрямую с живым сайтом legalcareerist.ru
+   (computed styles): --color-ink:#283953 используется и как акцент, и как
+   основной цвет текста; приглушённый текст — тот же ink с opacity 0.6,
+   не отдельный серый. Заголовки — Inter 600, БЕЗ капса, плотный трекинг
+   (letter-spacing отрицательный на крупных заголовках). Радиусы карточек
+   в районе 12-16px (radius-xl/2xl из их Tailwind-темы). */
 :root {
   --bg: #f4f7fb;
   --panel: #ffffff;
   --panel-2: #eef2f7;
   --border: #dde3ea;
-  --text: #1b2733;
-  --muted: #5c6f85;
+  --text: #283953;
+  --muted: rgba(40, 57, 83, 0.6);
   --accent: #283953;
   --accent-light: #6f93c4;
   --accent-mid: #45608a;
@@ -16,7 +18,7 @@
   --accent-deep: #283953;
   --danger: #c0374f;
   --warn: #c9820a;
-  --font-display: "PT Sans", "Inter", -apple-system, sans-serif;
+  --font-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -45,8 +47,7 @@ body {
   gap: 9px;
   font-weight: 700;
   font-size: 16px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: -0.01em;
   font-family: var(--font-display);
   color: #ffffff;
   padding: 8px 10px 24px;
@@ -91,9 +92,8 @@ body {
 h1 {
   margin: 0 0 20px;
   font-size: 26px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   font-family: var(--font-display);
   color: var(--accent);
 }
@@ -134,11 +134,10 @@ h2 { font-size: 16px; color: var(--muted); margin: 28px 0 12px; }
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 34px;
+  font-size: 40px;
   margin: 0 0 14px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: -0.03em;
   font-family: var(--font-display);
   color: var(--accent);
 }
