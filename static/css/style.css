@@ -175,9 +175,9 @@ h2 { font-size: 16px; color: var(--muted); margin: 28px 0 12px; }
   box-shadow: 0 1px 3px rgba(20, 20, 45, 0.06);
 }
 .ai-card-title { margin: 0 0 16px; font-size: 17px; }
-.ai-card label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 6px; }
+.ai-card label:not(.check-item) { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 6px; }
 .ai-card label:first-of-type { margin-top: 0; }
-.ai-card input, .ai-card textarea, .ai-card select {
+.ai-card input:not([type="checkbox"]), .ai-card textarea, .ai-card select {
   width: 100%;
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -348,8 +348,8 @@ h2 { font-size: 16px; color: var(--muted); margin: 28px 0 12px; }
   overflow-y: auto;
 }
 .modal-box h2 { margin-top: 0; }
-.modal-box label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
-.modal-box input, .modal-box textarea, .modal-box select {
+.modal-box label:not(.check-item) { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+.modal-box input:not([type="checkbox"]), .modal-box textarea, .modal-box select {
   width: 100%;
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -362,7 +362,8 @@ h2 { font-size: 16px; color: var(--muted); margin: 28px 0 12px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 
 .check-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 4px; }
-.check-item { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.check-item { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.check-item input[type="checkbox"] { flex-shrink: 0; width: auto; margin: 0; }
 
 .header-actions { display: flex; gap: 10px; }
 
