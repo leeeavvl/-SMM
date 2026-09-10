@@ -1,0 +1,29 @@
+# systemd-юнит для «Контент-завода».
+#
+# Установка на сервере:
+#   sudo cp deploy/smm-app.service /etc/systemd/system/smm-app.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now smm-app
+#   sudo systemctl status smm-app        # проверить, что запустилось
+#   sudo journalctl -u smm-app -f        # смотреть логи в реальном времени
+#
+# После правки любых переменных ниже:
+#   sudo systemctl daemon-reload && sudo systemctl restart smm-app
+
+[Unit]
+Description=Контент-завод (SMM app)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/smm-app
+Environment="ANTHROPIC_API_KEY="
+Environment="OPENAI_API_KEY="
+Environment="GEMINI_API_KEY="
+ExecStart=/opt/smm-app/.venv/bin/uvicorn app.app:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

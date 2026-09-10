@@ -1,0 +1,42 @@
+# Nginx-конфиг для «Контент-завода» — реверс-прокси + Basic Auth.
+#
+# Установка:
+#   sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/smm-app
+#   sudo nano /etc/nginx/sites-available/smm-app   # замените ваш-домен.ру ниже
+#   sudo ln -s /etc/nginx/sites-available/smm-app /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot --nginx -d ваш-домен.ру           # добавит HTTPS автоматически
+#
+# ВАЖНО: у приложения самого по себе нет авторизации — Basic Auth ниже
+# обязателен, если сайт будет доступен всему интернету (иначе к нему сможет
+# зайти кто угодно, зная адрес, и использовать ваши API-ключи).
+#
+# Создать пароль (один раз, спросит логин/пароль):
+#   sudo apt install -y apache2-utils
+#   sudo htpasswd -c /etc/nginx/.smm-app-htpasswd ваш_логин
+
+server {
+    listen 80;
+    server_name ваш-домен.ру;
+
+    location / {
+        auth_basic "Контент-завод";
+        auth_basic_user_file /etc/nginx/.smm-app-htpasswd;
+
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Загрузка медиа/брендбука может быть увесистой
+        client_max_body_size 25m;
+    }
+
+    # Эндпоинт OAuth-коллбэка Canva не должен требовать Basic Auth —
+    # иначе Canva не сможет завершить авторизацию редиректом браузера.
+    location /api/canva/oauth/callback {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+    }
+}
