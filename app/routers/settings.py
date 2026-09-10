@@ -44,6 +44,7 @@ def _current_settings() -> dict:
         "google_service_account_path": get_setting("google_service_account_path") or "",
         "google_sheets_auto_sync": (get_setting("google_sheets_auto_sync") or "0") == "1",
         "brand_book": brandbook.get_brand_profile(),
+        "auto_learning_enabled": (get_setting("auto_learning_enabled") or "1") == "1",
     }
 
 
@@ -82,6 +83,8 @@ def update_settings(payload: SettingsUpdate):
         set_setting("google_service_account_path", payload.google_service_account_path.strip())
     if payload.google_sheets_auto_sync is not None:
         set_setting("google_sheets_auto_sync", "1" if payload.google_sheets_auto_sync else "0")
+    if payload.auto_learning_enabled is not None:
+        set_setting("auto_learning_enabled", "1" if payload.auto_learning_enabled else "0")
 
     return _current_settings()
 
@@ -96,6 +99,13 @@ def ollama_status():
         return {"reachable": True, "models": models}
     except httpx.HTTPError:
         return {"reachable": False, "models": []}
+
+
+@router.post("/run-auto-learning")
+def run_auto_learning_now():
+    from app.auto_learning import run_auto_learning
+
+    return run_auto_learning()
 
 
 @router.post("/brand-book")

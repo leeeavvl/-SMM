@@ -351,6 +351,19 @@
       </div>
 
       <div class="settings-block" style="margin-top:16px;">
+        <h2>🎓 Автообучение ИИ</h2>
+        <p class="hint">Приложение само проверяет опубликованные посты по мере поступления статистики (просмотры/лайки/комментарии), оценивает их и сохраняет конкретные выводы в «Базу» — без ручных кликов. Эти выводы потом подмешиваются во все новые посты, так что со временем ИИ пишет точнее под вашу аудиторию. Проверка идёт каждые 30 минут в фоне.</p>
+        <label class="check-item" style="margin-top:6px;">
+          <input type="checkbox" id="settings-auto-learning" checked> Включено
+        </label>
+        <div class="modal-actions" style="justify-content:flex-start; gap:8px;">
+          <button class="btn primary" id="btn-save-auto-learning">Сохранить</button>
+          <button class="btn" id="btn-run-auto-learning-now">Запустить сейчас</button>
+        </div>
+        <div id="settings-auto-learning-status" class="hint"></div>
+      </div>
+
+      <div class="settings-block" style="margin-top:16px;">
         <h2>📘 Брендбук</h2>
         <p class="hint">Загрузите PDF с брендбуком — приложение достанет фирменные цвета и шрифты и будет учитывать их при генерации ИИ-изображений и при создании дизайнов в Canva.</p>
         <label>Файл брендбука (.pdf)</label>

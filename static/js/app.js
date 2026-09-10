@@ -1083,7 +1083,45 @@ async function loadSettings() {
 
   document.getElementById("brandbook-status").textContent = "";
   renderBrandBookInfo(s.brand_book);
+
+  document.getElementById("settings-auto-learning").checked = s.auto_learning_enabled;
+  document.getElementById("settings-auto-learning-status").textContent = "";
 }
+
+document.getElementById("btn-save-auto-learning").addEventListener("click", async () => {
+  try {
+    await api("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ auto_learning_enabled: document.getElementById("settings-auto-learning").checked }),
+    });
+    toast("Сохранено");
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+document.getElementById("btn-run-auto-learning-now").addEventListener("click", async () => {
+  const status = document.getElementById("settings-auto-learning-status");
+  const btn = document.getElementById("btn-run-auto-learning-now");
+  btn.disabled = true;
+  status.textContent = "Запускаю проверку...";
+  try {
+    const data = await api("/api/settings/run-auto-learning", { method: "POST" });
+    if (data.skipped) {
+      status.textContent = "Автообучение выключено — включите его выше.";
+    } else if (data.analyzed === 0) {
+      status.textContent = "Постов, требующих (пере)анализа, сейчас нет.";
+    } else {
+      status.textContent = `Проанализировано постов: ${data.analyzed}. Добавлено идей в базу: ${data.ideas_added}.` +
+        (data.errors.length ? ` Не удалось: ${data.errors.length} (см. лог сервера).` : "");
+    }
+  } catch (e) {
+    status.textContent = "";
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 document.getElementById("btn-save-gsheet").addEventListener("click", async () => {
   const payload = {

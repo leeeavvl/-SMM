@@ -57,6 +57,7 @@ class SettingsUpdate(BaseModel):
     google_sheet_worksheet: Optional[str] = None
     google_service_account_path: Optional[str] = None
     google_sheets_auto_sync: Optional[bool] = None
+    auto_learning_enabled: Optional[bool] = None
 
 
 class AssistantRunRequest(BaseModel):
