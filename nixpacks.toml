@@ -1,0 +1,4 @@
+# Системные пакеты, нужные приложению на Railway (Nixpacks) —
+# tesseract для распознавания текста со сканов ТЗ платформ (pytesseract).
+[phases.setup]
+aptPkgs = ["tesseract-ocr", "tesseract-ocr-rus"]

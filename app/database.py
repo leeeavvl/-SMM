@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data.db"
+# DATA_DIR позволяет вынести базу на постоянный диск/volume (например,
+# Railway Volume) — без переменной поведение как раньше: файл рядом с кодом.
+_data_dir = os.environ.get("DATA_DIR")
+DB_PATH = Path(_data_dir) / "data.db" if _data_dir else Path(__file__).resolve().parent.parent / "data.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS platforms (
@@ -135,6 +139,7 @@ DEFAULT_BRAND_NAME = "Карьерный юрист"
 def init_db() -> None:
     from app.platforms import PLATFORMS
 
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with db_cursor() as cur:
         cur.executescript(SCHEMA)
         _ensure_column(cur, "platforms", "brief", "brief TEXT NOT NULL DEFAULT ''")
