@@ -8,7 +8,7 @@ from app.ai import AIConfigError, AIGenerationError, generate_plan, generate_pos
 from app.database import db_cursor, get_setting, row_to_dict
 from app.google_sheets import SheetsConfigError, SheetsSyncError, append_plan_items, update_cell_text
 from app.plan_options import get_options
-from app.schemas import PlanGenerateRequest, PlanWriteRequest
+from app.schemas import PlanGenerateRequest, PlanLinkContentRequest, PlanWriteRequest
 
 router = APIRouter(prefix="/api/plan", tags=["plan"])
 
@@ -164,6 +164,32 @@ def write_post(plan_id: int, payload: PlanWriteRequest):
         updated = row_to_dict(cur.fetchone())
 
     return updated
+
+
+@router.post("/{plan_id}/link-content")
+def link_content(plan_id: int, payload: PlanLinkContentRequest):
+    """Привязывает материал, написанный/сохранённый в редакторе поста (открытом
+    из «Контент-плана»), к пункту плана — чтобы план отражал, что текст готов."""
+    with db_cursor() as cur:
+        cur.execute("SELECT * FROM content_plan WHERE id = ?", (plan_id,))
+        plan_item = cur.fetchone()
+        if not plan_item:
+            raise HTTPException(404, "Пункт плана не найден")
+        cur.execute("SELECT id FROM content WHERE id = ?", (payload.content_id,))
+        if not cur.fetchone():
+            raise HTTPException(404, "Материал не найден")
+
+        new_status = "drafted" if plan_item["status"] == "idea" else plan_item["status"]
+        cur.execute(
+            "UPDATE content_plan SET content_id = ?, status = ? WHERE id = ?",
+            (payload.content_id, new_status, plan_id),
+        )
+        cur.execute(
+            "SELECT cp.*, c.title AS content_title, c.status AS content_status "
+            "FROM content_plan cp LEFT JOIN content c ON c.id = cp.content_id WHERE cp.id = ?",
+            (plan_id,),
+        )
+        return row_to_dict(cur.fetchone())
 
 
 @router.post("/{plan_id}/approve")

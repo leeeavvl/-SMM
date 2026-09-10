@@ -94,6 +94,10 @@ class PlanWriteRequest(BaseModel):
     length: Optional[int] = Field(default=None, gt=0, le=20000)
 
 
+class PlanLinkContentRequest(BaseModel):
+    content_id: int
+
+
 class ManualStatsUpdate(BaseModel):
     views: Optional[int] = Field(default=None, ge=0)
     likes: Optional[int] = Field(default=None, ge=0)

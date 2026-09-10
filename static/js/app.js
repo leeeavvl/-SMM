@@ -503,21 +503,29 @@ async function uploadMediaFile(file) {
   return res.json();
 }
 
-function openContentModal(id) {
+let currentPlanId = null;
+
+async function openContentModal(id, prefill) {
   const modal = document.getElementById("modal-content");
   document.getElementById("content-id").value = id || "";
+  currentPlanId = prefill?.planId || null;
+
   if (id) {
-    const c = state.content.find((x) => x.id === id);
+    let c = state.content.find((x) => x.id === id);
+    if (!c) c = await api(`/api/content/${id}`); // ещё не загружали список — берём материал напрямую
     document.getElementById("content-modal-title").textContent = "Изменить пост";
     document.getElementById("content-title").value = c.title;
     document.getElementById("content-body").value = c.body;
     document.getElementById("content-media").value = c.media_url || "";
     document.getElementById("content-tags").value = c.tags || "";
     setMediaPreview(c.media_url || "");
+    lastLoadedContentPlatforms = c.platforms || [];
   } else {
     document.getElementById("content-modal-title").textContent = "Новый пост";
     ["content-title", "content-body", "content-media", "content-tags"].forEach((f) => (document.getElementById(f).value = ""));
     setMediaPreview("");
+    lastLoadedContentPlatforms = [];
+    if (prefill?.topic) document.getElementById("content-title").value = prefill.topic;
   }
   document.getElementById("content-schedule").value = "";
   document.getElementById("content-preview").hidden = true;
@@ -532,16 +540,18 @@ function openContentModal(id) {
   document.getElementById("canva-status-hint").textContent = "";
   api("/api/settings").then((s) => renderBrandSwatches(document.getElementById("canva-brand-swatches"), s.brand_book?.colors || []));
 
-  if (!state.platforms.length) fetchPlatforms().then(renderContentPlatformChecks);
-  else renderContentPlatformChecks();
+  const preselectPlatformId = !id ? prefill?.platformId : null;
+  if (!state.platforms.length) await fetchPlatforms();
+  renderContentPlatformChecks(preselectPlatformId);
 
   modal.classList.add("active");
 }
 
-function renderContentPlatformChecks() {
-  const id = document.getElementById("content-id").value;
-  const c = id ? state.content.find((x) => x.id === Number(id)) : null;
-  const selected = new Set((c?.platforms || []).map((p) => p.platform_id));
+let lastLoadedContentPlatforms = [];
+
+function renderContentPlatformChecks(preselectPlatformId) {
+  const selected = new Set(lastLoadedContentPlatforms.map((p) => p.platform_id));
+  if (preselectPlatformId) selected.add(preselectPlatformId);
   const grid = document.getElementById("content-platform-checks");
   grid.innerHTML = state.platforms
     .map(
@@ -577,6 +587,44 @@ document.getElementById("btn-toggle-preview").addEventListener("click", () => {
     preview.hidden = false;
     textarea.hidden = true;
     document.getElementById("btn-toggle-preview").classList.add("active");
+  }
+});
+
+document.getElementById("btn-ai-write-body").addEventListener("click", async () => {
+  const topic = document.getElementById("content-title").value.trim();
+  if (!topic) {
+    toast("Сначала введите заголовок — по нему ИИ напишет текст", true);
+    document.getElementById("content-title").focus();
+    return;
+  }
+  const btn = document.getElementById("btn-ai-write-body");
+  btn.disabled = true;
+  btn.textContent = "Пишу...";
+  try {
+    const data = await api("/api/ai/generate", {
+      method: "POST",
+      body: JSON.stringify({
+        topic,
+        brief: "",
+        tone: "нейтральный",
+        platform_ids: selectedContentPlatformIds(),
+        variants: 1,
+      }),
+    });
+    if (!data.variants.length) throw new Error("Модель не вернула текст");
+    const variant = data.variants[0];
+    document.getElementById("content-body").value = variant.body;
+    if (!document.getElementById("content-tags").value.trim() && variant.tags) {
+      document.getElementById("content-tags").value = variant.tags;
+    }
+    updateCharCounter();
+    refreshPreviewIfVisible();
+    toast("Текст готов — можно отредактировать перед сохранением");
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "✨ Написать с ИИ";
   }
 });
 
@@ -701,10 +749,25 @@ async function savePostContent() {
   return api("/api/content", { method: "POST", body: JSON.stringify(payload) });
 }
 
+async function linkToPlanItemIfNeeded(contentId) {
+  if (!currentPlanId) return;
+  try {
+    await api(`/api/plan/${currentPlanId}/link-content`, {
+      method: "POST",
+      body: JSON.stringify({ content_id: contentId }),
+    });
+  } catch (e) {
+    toast(`Пост сохранён, но не удалось связать с контент-планом: ${e.message}`, true);
+  }
+  currentPlanId = null;
+  loadPlan();
+}
+
 document.getElementById("btn-save-draft").addEventListener("click", async () => {
   try {
     const saved = await savePostContent();
     if (!saved) return;
+    await linkToPlanItemIfNeeded(saved.id);
     document.getElementById("modal-content").classList.remove("active");
     toast("Сохранено как черновик");
     loadContent();
@@ -728,6 +791,7 @@ document.getElementById("btn-publish-now").addEventListener("click", async () =>
       method: "POST",
       body: JSON.stringify({ platform_ids: platformIds, scheduled_at: null }),
     });
+    await linkToPlanItemIfNeeded(saved.id);
     document.getElementById("modal-content").classList.remove("active");
     toast("Отправлено на публикацию");
     loadContent();
@@ -755,6 +819,7 @@ document.getElementById("btn-schedule-post").addEventListener("click", async () 
         scheduled_at: new Date(scheduleVal).toISOString().slice(0, 19).replace("T", " "),
       }),
     });
+    await linkToPlanItemIfNeeded(saved.id);
     document.getElementById("modal-content").classList.remove("active");
     toast("Запланировано");
     loadContent();
@@ -1301,15 +1366,15 @@ function renderPlan(items) {
         if (it.status === "idea") {
           const writeBtn = document.createElement("button");
           writeBtn.className = "btn small primary";
-          writeBtn.textContent = "Написать текст";
-          writeBtn.addEventListener("click", () => writePlanItem(it.id, writeBtn));
+          writeBtn.textContent = "✏️ Написать пост";
+          writeBtn.addEventListener("click", () => openPlanItemEditor(it));
           actions.appendChild(writeBtn);
         } else if (it.status === "drafted") {
-          const openBtn = document.createElement("button");
-          openBtn.className = "btn small";
-          openBtn.textContent = "Открыть в Контенте";
-          openBtn.addEventListener("click", () => switchView("content"));
-          actions.appendChild(openBtn);
+          const editBtn = document.createElement("button");
+          editBtn.className = "btn small";
+          editBtn.textContent = "Открыть пост";
+          editBtn.addEventListener("click", () => openPlanItemEditor(it));
+          actions.appendChild(editBtn);
 
           const approveBtn = document.createElement("button");
           approveBtn.className = "btn small primary";
@@ -1334,18 +1399,12 @@ function renderPlan(items) {
     });
 }
 
-async function writePlanItem(id, btn) {
-  btn.disabled = true;
-  btn.textContent = "Пишу...";
-  try {
-    await api(`/api/plan/${id}/write`, { method: "POST", body: JSON.stringify({}) });
-    toast("Текст готов, черновик создан в «Контенте»");
-    loadPlan();
-  } catch (e) {
-    toast(e.message, true);
-    btn.disabled = false;
-    btn.textContent = "Написать текст";
-  }
+function openPlanItemEditor(planItem) {
+  return openContentModal(planItem.content_id || null, {
+    planId: planItem.id,
+    topic: planItem.topic,
+    platformId: planItem.platform_id,
+  });
 }
 
 async function approvePlanItem(id, btn) {
