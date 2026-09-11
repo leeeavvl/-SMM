@@ -78,6 +78,7 @@
                 <option value="anthropic">Claude (Anthropic)</option>
                 <option value="openai">ChatGPT (OpenAI)</option>
                 <option value="gemini">Google Gemini (бесплатно)</option>
+                <option value="gigachat">GigaChat (Сбер, РФ)</option>
                 <option value="ollama">Ollama (локально)</option>
               </select>
             </div>
@@ -286,12 +287,13 @@
 
       <div class="settings-block" style="margin-top:16px;">
         <h2>Источник ИИ-генерации постов</h2>
-        <p class="hint">Выберите, чем генерировать посты: платным облачным Claude, платным ChatGPT (OpenAI), Google Gemini (есть бесплатный уровень) или бесплатной локальной моделью через Ollama.</p>
+        <p class="hint">Выберите, чем генерировать посты: платным облачным Claude, платным ChatGPT (OpenAI), Google Gemini, GigaChat (Сбер — доступен из РФ) или бесплатной локальной моделью через Ollama.</p>
         <label>Провайдер</label>
         <select id="settings-provider">
           <option value="anthropic">Claude (Anthropic API, платно)</option>
-          <option value="openai">ChatGPT (OpenAI API, платно)</option>
-          <option value="gemini">Google Gemini (есть бесплатный уровень)</option>
+          <option value="openai">ChatGPT (OpenAI API, платно, недоступен из РФ)</option>
+          <option value="gemini">Google Gemini (бесплатный уровень, недоступен из РФ)</option>
+          <option value="gigachat">GigaChat (Сбер, доступен из РФ)</option>
           <option value="ollama">Ollama — локальная модель (бесплатно)</option>
         </select>
 
@@ -316,6 +318,15 @@
           <label>Модель</label>
           <input type="text" id="settings-gemini-model" placeholder="gemini-2.0-flash">
           <div id="settings-gemini-status" class="hint"></div>
+        </div>
+
+        <div id="settings-gigachat-block">
+          <label>Authorization key GigaChat</label>
+          <input type="password" id="settings-gigachat-auth-key" placeholder="MDE4ZmY4...">
+          <p class="hint">Получите на <strong>developers.sber.ru</strong> → создать проект → GigaChat API → «Получить ключ» (Authorization key). У физлиц-разработчиков есть бесплатный лимит токенов.</p>
+          <label>Модель</label>
+          <input type="text" id="settings-gigachat-model" placeholder="GigaChat">
+          <div id="settings-gigachat-status" class="hint"></div>
         </div>
 
         <div id="settings-ollama-block">
@@ -410,6 +421,7 @@
         <option value="anthropic">Claude (Anthropic)</option>
         <option value="openai">ChatGPT (OpenAI)</option>
         <option value="gemini">Google Gemini (бесплатно)</option>
+        <option value="gigachat">GigaChat (Сбер, РФ)</option>
         <option value="ollama">Ollama (локально)</option>
       </select>
       <button class="modal-close" id="btn-close-assistant-tool" type="button" aria-label="Закрыть">×</button>

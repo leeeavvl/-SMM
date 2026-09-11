@@ -1036,6 +1036,7 @@ function toggleProviderBlocks(provider) {
   document.getElementById("settings-anthropic-block").style.display = provider === "anthropic" ? "" : "none";
   document.getElementById("settings-openai-block").style.display = provider === "openai" ? "" : "none";
   document.getElementById("settings-gemini-block").style.display = provider === "gemini" ? "" : "none";
+  document.getElementById("settings-gigachat-block").style.display = provider === "gigachat" ? "" : "none";
   document.getElementById("settings-ollama-block").style.display = provider === "ollama" ? "" : "none";
 }
 
@@ -1063,6 +1064,13 @@ async function loadSettings() {
     : "Ключ ещё не задан — генерация через Gemini недоступна.";
   document.getElementById("settings-gemini-api-key").value = "";
   document.getElementById("settings-gemini-model").value = s.gemini_model;
+
+  const gigachatStatus = document.getElementById("settings-gigachat-status");
+  gigachatStatus.textContent = s.gigachat_auth_key_set
+    ? "Ключ сохранён и активен."
+    : "Ключ ещё не задан — генерация через GigaChat недоступна.";
+  document.getElementById("settings-gigachat-auth-key").value = "";
+  document.getElementById("settings-gigachat-model").value = s.gigachat_model;
 
   document.getElementById("settings-ollama-url").value = s.ollama_base_url;
   document.getElementById("settings-ollama-model").value = s.ollama_model;
@@ -1200,6 +1208,10 @@ document.getElementById("btn-save-settings").addEventListener("click", async () 
     const key = document.getElementById("settings-gemini-api-key").value.trim();
     if (key) payload.gemini_api_key = key;
     payload.gemini_model = document.getElementById("settings-gemini-model").value.trim() || "gemini-2.0-flash";
+  } else if (provider === "gigachat") {
+    const key = document.getElementById("settings-gigachat-auth-key").value.trim();
+    if (key) payload.gigachat_auth_key = key;
+    payload.gigachat_model = document.getElementById("settings-gigachat-model").value.trim() || "GigaChat";
   } else {
     payload.ollama_base_url = document.getElementById("settings-ollama-url").value.trim() || "http://localhost:11434";
     payload.ollama_model = document.getElementById("settings-ollama-model").value.trim() || "qwen2.5:7b";

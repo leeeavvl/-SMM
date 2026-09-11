@@ -1,9 +1,11 @@
 """Генерация постов по теме и техническому заданию.
 
-Поддерживает четыре провайдера:
+Поддерживает пять провайдеров:
 - anthropic — Claude API (платно, нужен ключ);
-- openai — ChatGPT / OpenAI API (платно, нужен ключ);
-- gemini — Google Gemini API (есть бесплатный уровень, нужен ключ с ai.google.dev);
+- openai — ChatGPT / OpenAI API (платно, нужен ключ; недоступен из РФ);
+- gemini — Google Gemini API (бесплатный уровень; недоступен из РФ);
+- gigachat — GigaChat API от Сбера (доступен из РФ, есть бесплатный лимит
+  токенов для физлиц-разработчиков);
 - ollama — локальная модель через Ollama (бесплатно, работает на компьютере пользователя).
 
 Если выбрано несколько платформ, для каждой из них делается отдельный запрос к модели,
@@ -15,6 +17,8 @@ import datetime as dt
 import json
 import os
 import re
+import time
+import uuid
 
 import anthropic
 import httpx
@@ -23,14 +27,18 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 
-from app.database import DEFAULT_BRAND_DESCRIPTION, DEFAULT_BRAND_NAME, db_cursor, get_setting
+from app.database import DEFAULT_BRAND_DESCRIPTION, DEFAULT_BRAND_NAME, db_cursor, get_setting, set_setting
 from app.platforms import PLATFORM_MAP
 
 ANTHROPIC_MODEL = "claude-sonnet-5"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
+DEFAULT_GIGACHAT_MODEL = "GigaChat"
 DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
+
+GIGACHAT_OAUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+GIGACHAT_API_BASE = "https://gigachat.devices.sberbank.ru/api/v1"
 
 
 class AIConfigError(RuntimeError):
@@ -144,6 +152,10 @@ def get_gemini_model() -> str:
     return get_setting("gemini_model") or DEFAULT_GEMINI_MODEL
 
 
+def get_gigachat_model() -> str:
+    return get_setting("gigachat_model") or DEFAULT_GIGACHAT_MODEL
+
+
 def get_ollama_model() -> str:
     return get_setting("ollama_model") or DEFAULT_OLLAMA_MODEL
 
@@ -180,6 +192,94 @@ def _get_gemini_api_key() -> str:
             "и добавьте его в разделе «Настройки»."
         )
     return key
+
+
+def _get_gigachat_auth_key() -> str:
+    key = get_setting("gigachat_auth_key") or os.environ.get("GIGACHAT_AUTH_KEY")
+    if not key:
+        raise AIConfigError(
+            "Authorization key GigaChat не настроен. Получите его на developers.sber.ru "
+            "(создать проект → GigaChat API → получить Authorization key) и добавьте "
+            "в разделе «Настройки»."
+        )
+    return key
+
+
+def _get_gigachat_token() -> str:
+    """GigaChat выдаёт Bearer-токен максимум на 30 минут по Authorization key
+    (Basic-заголовок) — кэшируем токен в settings и обновляем только когда истёк."""
+    cached_token = get_setting("gigachat_access_token")
+    expires_at = int(get_setting("gigachat_token_expires_at") or 0)
+    if cached_token and time.time() < expires_at:
+        return cached_token
+
+    auth_key = _get_gigachat_auth_key()
+    try:
+        resp = httpx.post(
+            GIGACHAT_OAUTH_URL,
+            headers={
+                "Authorization": f"Basic {auth_key}",
+                "RqUID": str(uuid.uuid4()),
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            data={"scope": "GIGACHAT_API_PERS"},
+            timeout=30,
+            # У GigaChat самоподписанный сертификат от Минцифры РФ, который
+            # обычно не входит в системное хранилище доверенных корневых
+            # сертификатов — без этого запрос падает с SSL-ошибкой.
+            verify=False,
+        )
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in (401, 403):
+            raise AIConfigError(
+                "Authorization key GigaChat недействителен. Проверьте его в разделе «Настройки»."
+            ) from exc
+        raise AIGenerationError(f"GigaChat: не удалось получить токен: {exc.response.text}") from exc
+    except httpx.HTTPError as exc:
+        raise AIGenerationError(f"GigaChat: ошибка соединения: {exc}") from exc
+
+    data = resp.json()
+    token = data["access_token"]
+    # expires_at в ответе GigaChat — unix-время в миллисекундах.
+    expires_at_ms = int(data.get("expires_at", 0))
+    set_setting("gigachat_access_token", token)
+    set_setting("gigachat_token_expires_at", str(expires_at_ms // 1000 - 60 if expires_at_ms else int(time.time()) + 1500))
+    return token
+
+
+def _generate_gigachat(system_prompt: str, user_prompt: str) -> str:
+    token = _get_gigachat_token()
+    model = get_gigachat_model()
+    try:
+        resp = httpx.post(
+            f"{GIGACHAT_API_BASE}/chat/completions",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            },
+            timeout=120,
+            verify=False,
+        )
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in (401, 403):
+            # Токен мог протухнуть раньше срока — сбрасываем кэш, чтобы
+            # следующий запрос запросил новый.
+            set_setting("gigachat_access_token", "")
+            raise AIConfigError(
+                "Сессия GigaChat истекла или ключ недействителен. Проверьте Authorization key в «Настройках»."
+            ) from exc
+        raise AIGenerationError(f"Ошибка обращения к GigaChat API: {exc.response.text}") from exc
+    except httpx.HTTPError as exc:
+        raise AIGenerationError(f"Ошибка соединения с GigaChat: {exc}") from exc
+
+    data = resp.json()
+    return (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
 
 
 def _strip_code_fence(text: str) -> str:
@@ -447,7 +547,7 @@ def _generate_ollama(system_prompt: str, user_prompt: str) -> str:
     return (data.get("message") or {}).get("content", "")
 
 
-VALID_PROVIDERS = {"anthropic", "openai", "gemini", "ollama"}
+VALID_PROVIDERS = {"anthropic", "openai", "gemini", "gigachat", "ollama"}
 
 
 def _generate_text(system_prompt: str, user_prompt: str, provider: str | None = None) -> str:
@@ -458,6 +558,8 @@ def _generate_text(system_prompt: str, user_prompt: str, provider: str | None = 
         return _generate_openai(system_prompt, user_prompt)
     if provider == "gemini":
         return _generate_gemini(system_prompt, user_prompt)
+    if provider == "gigachat":
+        return _generate_gigachat(system_prompt, user_prompt)
     return _generate_anthropic(system_prompt, user_prompt)
 
 
