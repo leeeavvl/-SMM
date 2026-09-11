@@ -51,8 +51,23 @@ async function api(path, options = {}) {
 
 // ---------- Navigation ----------
 document.querySelectorAll(".nav-item, .nav-link[data-view]").forEach((btn) => {
-  btn.addEventListener("click", () => switchView(btn.dataset.view));
+  btn.addEventListener("click", () => {
+    switchView(btn.dataset.view);
+    closeSidebar();
+  });
 });
+
+// ---------- Мобильное меню ----------
+function openSidebar() {
+  document.getElementById("sidebar").classList.add("open");
+  document.getElementById("sidebar-overlay").classList.add("visible");
+}
+function closeSidebar() {
+  document.getElementById("sidebar").classList.remove("open");
+  document.getElementById("sidebar-overlay").classList.remove("visible");
+}
+document.getElementById("btn-open-sidebar").addEventListener("click", openSidebar);
+document.getElementById("sidebar-overlay").addEventListener("click", closeSidebar);
 
 function switchView(view) {
   document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === view));

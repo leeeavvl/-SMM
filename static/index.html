@@ -11,7 +11,8 @@
 </head>
 <body>
 <div class="app">
-  <aside class="sidebar">
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+  <aside class="sidebar" id="sidebar">
     <div class="brand"><span class="brand-bars"><span></span><span></span><span></span><span></span></span> Контент-завод</div>
     <nav class="nav">
       <button class="nav-item active" data-view="dashboard">Дашборд</button>
@@ -26,6 +27,11 @@
       <button class="nav-item" data-view="settings">Настройки</button>
     </nav>
   </aside>
+
+  <div class="mobile-topbar">
+    <button class="mobile-menu-btn" id="btn-open-sidebar" aria-label="Открыть меню">☰</button>
+    <span class="mobile-topbar-title"><span class="brand-bars"><span></span><span></span><span></span><span></span></span> Контент-завод</span>
+  </div>
 
   <main class="main">
     <!-- Dashboard -->
@@ -178,18 +184,20 @@
         <label>Социальная сеть</label>
         <select id="plan-platform"></select>
 
-        <table class="plan-builder" id="plan-builder-table">
-          <thead>
-            <tr>
-              <th>Направление</th>
-              <th>Контент</th>
-              <th>Формат</th>
-              <th>Кол-во</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="plan-builder-rows"></tbody>
-        </table>
+        <div class="table-scroll">
+          <table class="plan-builder" id="plan-builder-table">
+            <thead>
+              <tr>
+                <th>Направление</th>
+                <th>Контент</th>
+                <th>Формат</th>
+                <th>Кол-во</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="plan-builder-rows"></tbody>
+          </table>
+        </div>
         <button class="btn small" id="btn-add-plan-row">+ Добавить строку</button>
 
         <div class="ai-row" style="margin-top:16px;">
@@ -229,23 +237,27 @@
         <button class="btn small" id="btn-refresh-telegram-stats">🔄 Обновить статистику Telegram</button>
       </div>
       <p class="hint">Просмотры для Telegram подтягиваются автоматически с публичной страницы канала. Для остальных площадок внесите цифры вручную.</p>
-      <table class="table">
-        <thead>
-          <tr><th>Материал</th><th>Платформа</th><th>Просмотры</th><th>Лайки</th><th>Комментарии</th><th>Оценка</th><th></th></tr>
-        </thead>
-        <tbody id="stats-list"></tbody>
-      </table>
+      <div class="table-scroll">
+        <table class="table">
+          <thead>
+            <tr><th>Материал</th><th>Платформа</th><th>Просмотры</th><th>Лайки</th><th>Комментарии</th><th>Оценка</th><th></th></tr>
+          </thead>
+          <tbody id="stats-list"></tbody>
+        </table>
+      </div>
     </section>
 
     <!-- Publish -->
     <section id="view-publish" class="view">
       <h1>Очередь публикаций</h1>
-      <table class="table">
-        <thead>
-          <tr><th>Материал</th><th>Платформа</th><th>Статус</th><th>Когда</th><th>Ссылка / ошибка</th><th></th></tr>
-        </thead>
-        <tbody id="publish-queue"></tbody>
-      </table>
+      <div class="table-scroll">
+        <table class="table">
+          <thead>
+            <tr><th>Материал</th><th>Платформа</th><th>Статус</th><th>Когда</th><th>Ссылка / ошибка</th><th></th></tr>
+          </thead>
+          <tbody id="publish-queue"></tbody>
+        </table>
+      </div>
     </section>
 
     <!-- Platforms -->
@@ -262,12 +274,14 @@
         <button class="btn primary" id="btn-new-sale">+ Добавить запись</button>
       </div>
       <div class="cards" id="sales-cards"></div>
-      <table class="table">
-        <thead>
-          <tr><th>Дата</th><th>Платформа</th><th>Заказы</th><th>Выручка</th><th>Заметка</th><th></th></tr>
-        </thead>
-        <tbody id="sales-list"></tbody>
-      </table>
+      <div class="table-scroll">
+        <table class="table">
+          <thead>
+            <tr><th>Дата</th><th>Платформа</th><th>Заказы</th><th>Выручка</th><th>Заметка</th><th></th></tr>
+          </thead>
+          <tbody id="sales-list"></tbody>
+        </table>
+      </div>
     </section>
 
     <!-- Settings -->
