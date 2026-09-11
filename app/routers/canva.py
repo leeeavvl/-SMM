@@ -17,6 +17,7 @@ UPLOAD_DIR = Path(__file__).resolve().parent.parent.parent / "static" / "uploads
 class CanvaCredentials(BaseModel):
     client_id: str = Field(min_length=1)
     client_secret: str = Field(min_length=1)
+    redirect_uri: str | None = None
 
 
 class CreateDesignRequest(BaseModel):
@@ -42,6 +43,8 @@ def canva_status():
 def save_credentials(payload: CanvaCredentials):
     set_setting("canva_client_id", payload.client_id.strip())
     set_setting("canva_client_secret", payload.client_secret.strip())
+    if payload.redirect_uri is not None:
+        set_setting("canva_redirect_uri", payload.redirect_uri.strip())
     return {"ok": True}
 
 
