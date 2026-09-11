@@ -563,6 +563,21 @@ def _generate_text(system_prompt: str, user_prompt: str, provider: str | None = 
     return _generate_anthropic(system_prompt, user_prompt)
 
 
+def _generate_and_parse_variants(system_prompt: str, user_prompt: str, provider: str | None, attempts: int = 2) -> list[dict]:
+    """Некоторые провайдеры (GigaChat, локальные модели через Ollama) не так
+    строго следуют инструкции «верни только JSON», как Claude/GPT/Gemini, и
+    иногда возвращают слегка невалидный JSON. Вместо того чтобы сразу
+    показывать пользователю ошибку разбора — тихо пробуем ещё раз."""
+    last_exc: AIGenerationError | None = None
+    for _ in range(max(1, attempts)):
+        text = _generate_text(system_prompt, user_prompt, provider)
+        try:
+            return _parse_variants(text)
+        except AIGenerationError as exc:
+            last_exc = exc
+    raise last_exc
+
+
 def generate_posts(
     topic: str,
     brief: str,
@@ -576,7 +591,7 @@ def generate_posts(
 
     if not platform_ids:
         system_prompt, user_prompt = _build_prompts_for_platform(topic, brief, tone, None, variants, length)
-        return _parse_variants(_generate_text(system_prompt, user_prompt, provider)), []
+        return _generate_and_parse_variants(system_prompt, user_prompt, provider), []
 
     results: list[dict] = []
     errors: list[str] = []
@@ -586,8 +601,7 @@ def generate_posts(
         platform = _get_platform_context(platform_id)
         system_prompt, user_prompt = _build_prompts_for_platform(topic, brief, tone, platform, variants, length)
         try:
-            text = _generate_text(system_prompt, user_prompt, provider)
-            for item in _parse_variants(text):
+            for item in _generate_and_parse_variants(system_prompt, user_prompt, provider):
                 item["platform_id"] = platform_id
                 item["platform_name"] = platform["name"]
                 results.append(item)
