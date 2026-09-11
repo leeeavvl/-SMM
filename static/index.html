@@ -495,8 +495,14 @@
           <button type="button" class="tool-btn" id="tool-hashtag" title="Добавить хештег">#</button>
           <button type="button" class="tool-btn" id="tool-uppercase" title="Формат текста">T</button>
         </div>
+        <div class="char-target">
+          <label for="content-target-length">Рекомендуемая длина</label>
+          <input type="number" id="content-target-length" min="0" step="50" placeholder="—">
+          <span>симв.</span>
+        </div>
         <div class="char-counter" id="char-counter">0</div>
       </div>
+      <div id="char-target-hint" class="hint char-target-hint" hidden></div>
       <div id="emoji-picker" class="emoji-picker" hidden></div>
     </div>
 

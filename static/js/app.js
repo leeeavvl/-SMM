@@ -422,9 +422,78 @@ function escapeHtml(str) {
 
 const EMOJI_SET = ["😀","😂","🔥","🚀","✨","💡","👍","🎉","❤️","📣","📈","✅","👀","🙌","😉","💬"];
 
+// Ориентировочная длина поста (в знаках) под формат каждой площадки — общепринятые
+// практики для соцсетей. Используется только как стартовая подсказка перед
+// редактированием: пользователь может вписать своё значение в поле рядом.
+const RECOMMENDED_LENGTHS = {
+  telegram: 800,
+  instagram: 1200,
+  threads: 400,
+  vk: 1300,
+  dzen: 3500,
+  zakon_ru: 2500,
+  youtube: 900,
+  tiktok: 200,
+  pinterest: 400,
+  tzh: 3000,
+  facebook: 500,
+  x: 260,
+  linkedin: 1300,
+  avito: 600,
+};
+const DEFAULT_RECOMMENDED_LENGTH = 900;
+
+let targetLengthTouched = false;
+
+function computeRecommendedLength(platformIds) {
+  if (!platformIds || !platformIds.length) return null;
+  const values = platformIds.map((id) => RECOMMENDED_LENGTHS[id] ?? DEFAULT_RECOMMENDED_LENGTH);
+  // Берём наименьшее значение — так текст поместится в требования каждой из выбранных площадок.
+  return Math.min(...values);
+}
+
+function suggestTargetLength() {
+  const platformIds = selectedContentPlatformIds();
+  const suggested = computeRecommendedLength(platformIds);
+  const hint = document.getElementById("char-target-hint");
+
+  if (platformIds.length > 1) {
+    const byPlatform = platformIds
+      .map((id) => {
+        const p = state.platforms.find((pl) => pl.id === id);
+        const value = RECOMMENDED_LENGTHS[id] ?? DEFAULT_RECOMMENDED_LENGTH;
+        return `${p ? p.name : id} — ${value}`;
+      })
+      .join(", ");
+    hint.textContent = `Ориентир по площадкам: ${byPlatform}. Предложено минимальное значение, чтобы текст подошёл всем.`;
+    hint.hidden = false;
+  } else {
+    hint.hidden = true;
+  }
+
+  if (targetLengthTouched) return;
+  const input = document.getElementById("content-target-length");
+  input.value = suggested ?? "";
+  input.placeholder = suggested ? String(suggested) : "—";
+  updateCharCounter();
+}
+
 function updateCharCounter() {
   const len = document.getElementById("content-body").value.length;
-  document.getElementById("char-counter").textContent = String(len);
+  const counter = document.getElementById("char-counter");
+  const targetRaw = document.getElementById("content-target-length").value;
+  const target = targetRaw ? parseInt(targetRaw, 10) : null;
+
+  counter.classList.remove("ok", "warn", "over");
+  if (target && target > 0) {
+    counter.textContent = `${len} / ${target}`;
+    const ratio = len / target;
+    if (ratio > 1.15) counter.classList.add("over");
+    else if (ratio >= 0.85) counter.classList.add("ok");
+    else counter.classList.add("warn");
+  } else {
+    counter.textContent = String(len);
+  }
 }
 
 function highlightTags(text) {
@@ -544,6 +613,9 @@ async function openContentModal(id, prefill) {
   if (!state.platforms.length) await fetchPlatforms();
   renderContentPlatformChecks(preselectPlatformId);
 
+  targetLengthTouched = false;
+  suggestTargetLength();
+
   modal.classList.add("active");
 }
 
@@ -572,7 +644,15 @@ function refreshPreviewIfVisible() {
 ["content-title", "content-body", "content-media", "content-tags"].forEach((id) =>
   document.getElementById(id).addEventListener("input", refreshPreviewIfVisible)
 );
-document.getElementById("content-platform-checks").addEventListener("change", refreshPreviewIfVisible);
+document.getElementById("content-platform-checks").addEventListener("change", () => {
+  refreshPreviewIfVisible();
+  suggestTargetLength();
+});
+
+document.getElementById("content-target-length").addEventListener("input", () => {
+  targetLengthTouched = true;
+  updateCharCounter();
+});
 
 document.getElementById("btn-toggle-preview").addEventListener("click", () => {
   const textarea = document.getElementById("content-body");
@@ -601,6 +681,7 @@ document.getElementById("btn-ai-write-body").addEventListener("click", async () 
   btn.disabled = true;
   btn.textContent = "Пишу...";
   try {
+    const targetLength = parseInt(document.getElementById("content-target-length").value, 10);
     const data = await api("/api/ai/generate", {
       method: "POST",
       body: JSON.stringify({
@@ -609,6 +690,7 @@ document.getElementById("btn-ai-write-body").addEventListener("click", async () 
         tone: "нейтральный",
         platform_ids: selectedContentPlatformIds(),
         variants: 1,
+        length: Number.isFinite(targetLength) && targetLength > 0 ? targetLength : null,
       }),
     });
     if (!data.variants.length) throw new Error("Модель не вернула текст");
