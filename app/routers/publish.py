@@ -51,3 +51,31 @@ def publish_queue():
             "ORDER BY cp.id DESC"
         )
         return [row_to_dict(r) for r in cur.fetchall()]
+
+
+@router.post("/publish/queue/{cp_id}/cancel")
+def cancel_queued_publication(cp_id: int):
+    with db_cursor() as cur:
+        cur.execute("SELECT * FROM content_platforms WHERE id = ?", (cp_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Запись не найдена")
+        if row["status"] != "queued":
+            raise HTTPException(400, "Отменить можно только публикацию, которая ещё в очереди")
+
+        cur.execute(
+            "UPDATE content_platforms SET status = 'canceled', scheduled_at = NULL, error = NULL WHERE id = ?",
+            (cp_id,),
+        )
+        content_id = row["content_id"]
+        cur.execute(
+            "SELECT COUNT(*) AS n FROM content_platforms WHERE content_id = ? AND status = 'queued'",
+            (content_id,),
+        )
+        # Если больше нет площадок в очереди — материал возвращается в черновики,
+        # чтобы не висел в статусе «запланировано»/«публикуется» без активной задачи.
+        if cur.fetchone()["n"] == 0:
+            cur.execute("UPDATE content SET status = 'draft' WHERE id = ?", (content_id,))
+
+        cur.execute("SELECT cp.*, c.title FROM content_platforms cp JOIN content c ON c.id = cp.content_id WHERE cp.id = ?", (cp_id,))
+        return row_to_dict(cur.fetchone())

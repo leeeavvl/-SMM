@@ -13,7 +13,17 @@ const STATUS_LABELS = {
   published: "Опубликовано",
   queued: "В очереди",
   failed: "Ошибка",
+  canceled: "Отменено",
 };
+
+function formatDateTime(sqlDateTime) {
+  if (!sqlDateTime) return "";
+  // Формат из БД: "YYYY-MM-DD HH:MM:SS" (локальное время сервера) -> "ДД.ММ.ГГГГ ЧЧ:ММ"
+  const m = sqlDateTime.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return sqlDateTime;
+  const [, y, mo, d, h, mi] = m;
+  return `${d}.${mo}.${y} ${h}:${mi}`;
+}
 
 function statusLabel(s) {
   return STATUS_LABELS[s] || s;
@@ -118,7 +128,10 @@ function platformFileCard(p, stats) {
 // ---------- Content ----------
 function renderContentCard(c, { fullText } = {}) {
   const platformBadges = c.platforms
-    .map((cp) => `<span class="status-badge ${cp.status}">${cp.platform_id}: ${statusLabel(cp.status)}</span>`)
+    .map((cp) => {
+      const when = cp.status === "queued" && cp.scheduled_at ? ` · ${formatDateTime(cp.scheduled_at)}` : "";
+      return `<span class="status-badge ${cp.status}">${cp.platform_id}: ${statusLabel(cp.status)}${when}</span>`;
+    })
     .join(" ");
   const bodyHtml = fullText
     ? `<div class="cbody cbody-full">${escapeHtml(c.body)}</div>`
@@ -596,7 +609,12 @@ async function openContentModal(id, prefill) {
     lastLoadedContentPlatforms = [];
     if (prefill?.topic) document.getElementById("content-title").value = prefill.topic;
   }
-  document.getElementById("content-schedule").value = "";
+  // Если у материала уже есть запланированная площадка — покажем дату/время,
+  // на которое он поставлен, чтобы её было видно сразу при открытии поста.
+  const scheduledPlatform = lastLoadedContentPlatforms.find((p) => p.status === "queued" && p.scheduled_at);
+  document.getElementById("content-schedule").value = scheduledPlatform
+    ? scheduledPlatform.scheduled_at.replace(" ", "T").slice(0, 16)
+    : "";
   document.getElementById("content-preview").hidden = true;
   document.getElementById("content-body").hidden = false;
   document.getElementById("btn-toggle-preview").classList.remove("active");
@@ -966,17 +984,34 @@ async function loadPublishQueue() {
     return;
   }
   rows.forEach((r) => {
+    const when = formatDateTime(r.scheduled_at || r.published_at) || "—";
+    const cancelBtn = r.status === "queued"
+      ? `<button class="btn small danger" onclick="cancelQueuedPublication(${r.id})">Отменить</button>`
+      : "";
     tbody.insertAdjacentHTML(
       "beforeend",
       `<tr>
         <td>${escapeHtml(r.title)}</td>
         <td>${r.platform_id}</td>
         <td><span class="status-badge ${r.status}">${statusLabel(r.status)}</span></td>
-        <td>${r.scheduled_at || r.published_at || "—"}</td>
+        <td>${when}</td>
         <td>${r.url ? `<a href="${r.url}" target="_blank">ссылка</a>` : (r.error || "—")}</td>
+        <td>${cancelBtn}</td>
       </tr>`
     );
   });
+}
+
+async function cancelQueuedPublication(cpId) {
+  if (!confirm("Отменить запланированную публикацию?")) return;
+  try {
+    await api(`/api/publish/queue/${cpId}/cancel`, { method: "POST" });
+    toast("Публикация отменена");
+    loadPublishQueue();
+    loadContent();
+  } catch (e) {
+    toast(e.message, true);
+  }
 }
 
 // ---------- Platforms ----------
