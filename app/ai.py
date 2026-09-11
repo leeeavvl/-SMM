@@ -64,7 +64,7 @@ def get_date_context() -> str:
     )
 
 
-def get_knowledge_context(limit: int = 25, max_chars_each: int = 800) -> str:
+def get_knowledge_context(limit: int = 100, max_chars_each: int = 600) -> str:
     """Собирает загруженные материалы и накопленные идеи улучшения из «Базы» —
     подмешивается в промпт генерации, чтобы контент со временем становился лучше."""
     with db_cursor() as cur:
