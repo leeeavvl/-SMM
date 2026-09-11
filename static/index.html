@@ -347,8 +347,14 @@
 
       <div class="settings-block" style="margin-top:16px;">
         <h2>Google Таблица</h2>
-        <p class="hint">Контент-план можно автоматически выгружать в вашу Google Таблицу. Понадобится сервисный аккаунт Google Cloud — путь к JSON-ключу укажите ниже.</p>
-        <label>Путь к JSON-ключу сервисного аккаунта</label>
+        <p class="hint">Контент-план можно автоматически выгружать в вашу Google Таблицу. Понадобится сервисный аккаунт Google Cloud — загрузите файл JSON-ключа ниже (работает в том числе на облачном хостинге).</p>
+        <label>Файл JSON-ключа сервисного аккаунта</label>
+        <input type="file" id="gsheet-key-file" accept=".json,application/json">
+        <div class="modal-actions" style="justify-content:flex-start; gap:8px; margin-bottom:10px;">
+          <button class="btn primary" id="btn-upload-gsheet-key">Загрузить ключ</button>
+        </div>
+        <div id="settings-gsheet-key-status" class="hint"></div>
+        <label>Путь к JSON-ключу сервисного аккаунта (старый способ, для локального запуска)</label>
         <input type="text" id="settings-gsheet-key-path" placeholder="/Users/you/PycharmProjects/-SMM/service-account.json">
         <label>Ссылка на таблицу</label>
         <input type="text" id="settings-gsheet-url" placeholder="https://docs.google.com/spreadsheets/d/...">

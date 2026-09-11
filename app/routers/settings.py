@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 
 import httpx
@@ -48,6 +49,7 @@ def _current_settings() -> dict:
         "google_sheet_worksheet": get_setting("google_sheet_worksheet") or "",
         "google_service_account_path": get_setting("google_service_account_path") or "",
         "google_sheets_auto_sync": (get_setting("google_sheets_auto_sync") or "0") == "1",
+        "google_service_account_json_set": bool(get_setting("google_service_account_json")),
         "brand_book": brandbook.get_brand_profile(),
         "auto_learning_enabled": (get_setting("auto_learning_enabled") or "1") == "1",
     }
@@ -109,6 +111,24 @@ def ollama_status():
         return {"reachable": True, "models": models}
     except httpx.HTTPError:
         return {"reachable": False, "models": []}
+
+
+@router.post("/google-service-account")
+async def upload_google_service_account(file: UploadFile = File(...)):
+    if file.content_type not in ("application/json", "text/json", "text/plain"):
+        raise HTTPException(400, "Загрузите JSON-ключ сервисного аккаунта Google")
+    data = await file.read()
+    if len(data) > 2 * 1024 * 1024:
+        raise HTTPException(400, "Файл слишком большой для ключа сервисного аккаунта")
+    try:
+        info = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(400, f"Файл не похож на валидный JSON-ключ: {exc}") from exc
+    if info.get("type") != "service_account" or "client_email" not in info:
+        raise HTTPException(400, "Это не похоже на ключ сервисного аккаунта Google (нет полей type/client_email)")
+
+    set_setting("google_service_account_json", data.decode("utf-8"))
+    return {"uploaded": True, "client_email": info.get("client_email")}
 
 
 @router.post("/run-auto-learning")

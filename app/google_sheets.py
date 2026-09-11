@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import json
 import re
 
 import gspread
@@ -71,9 +72,24 @@ def _extract_spreadsheet_id(url_or_id: str) -> str:
 
 
 def get_client() -> gspread.Client:
+    # Загруженный через форму JSON-ключ (хранится в базе целиком) имеет приоритет —
+    # он работает и там, где нет доступа к локальной файловой системе (облачный
+    # хостинг вроде Railway). Путь к файлу на диске — старый способ, для локального
+    # запуска на своём компьютере, оставлен для обратной совместимости.
+    key_json = get_setting("google_service_account_json")
+    if key_json:
+        try:
+            info = json.loads(key_json)
+            creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+        except (ValueError, KeyError) as exc:
+            raise SheetsConfigError(f"Некорректный загруженный JSON-ключ: {exc}") from exc
+        return gspread.authorize(creds)
+
     key_path = get_setting("google_service_account_path")
     if not key_path:
-        raise SheetsConfigError("Не указан путь к JSON-ключу сервисного аккаунта Google.")
+        raise SheetsConfigError(
+            "Не задан JSON-ключ сервисного аккаунта Google — загрузите файл ключа в «Настройках»."
+        )
     try:
         creds = Credentials.from_service_account_file(key_path, scopes=SCOPES)
     except FileNotFoundError as exc:

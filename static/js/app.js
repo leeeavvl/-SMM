@@ -1084,6 +1084,8 @@ async function loadSettings() {
   document.getElementById("settings-gsheet-worksheet").value = s.google_sheet_worksheet;
   document.getElementById("settings-gsheet-autosync").checked = s.google_sheets_auto_sync;
   document.getElementById("settings-gsheet-status").textContent = "";
+  document.getElementById("settings-gsheet-key-status").textContent = s.google_service_account_json_set
+    ? "Ключ уже загружен." : "";
 
   document.getElementById("settings-canva-client-id").value = "";
   document.getElementById("settings-canva-client-secret").value = "";
@@ -1967,6 +1969,30 @@ function renderBrandBookInfo(brandBook) {
 
   renderBrandSwatches(document.getElementById("canva-brand-swatches"), brandBook.colors || []);
 }
+
+document.getElementById("btn-upload-gsheet-key").addEventListener("click", async () => {
+  const fileInput = document.getElementById("gsheet-key-file");
+  const file = fileInput.files?.[0];
+  const status = document.getElementById("settings-gsheet-key-status");
+  if (!file) {
+    toast("Выберите файл JSON-ключа", true);
+    return;
+  }
+  status.textContent = "Загружаю ключ...";
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/settings/google-service-account", { method: "POST", body: formData });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "Ошибка загрузки");
+    const data = await res.json();
+    status.textContent = `Готово: ключ загружен (${data.client_email}).`;
+    fileInput.value = "";
+    toast("Ключ Google сохранён");
+  } catch (e) {
+    status.textContent = "";
+    toast(e.message, true);
+  }
+});
 
 document.getElementById("btn-upload-brandbook").addEventListener("click", async () => {
   const fileInput = document.getElementById("brandbook-file");
