@@ -295,7 +295,9 @@ def _extract_json(text: str) -> list[dict]:
     match = re.search(r"\[.*\]", text, re.DOTALL)
     if match:
         text = match.group(0)
-    data = json.loads(text)
+    # strict=False: менее строгие модели (GigaChat и т.п.) иногда вставляют в значения строк
+    # буквальные переносы строк вместо экранированных \n — по умолчанию json их не пропускает.
+    data = json.loads(text, strict=False)
     if isinstance(data, dict):
         data = [data]
     if not isinstance(data, list):
@@ -309,12 +311,23 @@ def _extract_json_object(text: str) -> dict:
     вложенный массив по ошибке)."""
     text = _strip_code_fence(text)
     try:
-        data = json.loads(text)
+        data = json.loads(text, strict=False)
     except json.JSONDecodeError:
         match = re.search(r"\{.*\}", text, re.DOTALL)
-        if not match:
-            raise
-        data = json.loads(match.group(0))
+        data = None
+        if match:
+            try:
+                data = json.loads(match.group(0), strict=False)
+            except json.JSONDecodeError:
+                data = None
+        if data is None:
+            # Некоторые модели (замечено у GigaChat) иногда отдают содержимое объекта
+            # без внешних фигурных скобок, например `"body": "..."` — оборачиваем и
+            # пробуем разобрать ещё раз, прежде чем сдаться.
+            try:
+                data = json.loads("{" + text.strip().rstrip(",") + "}", strict=False)
+            except json.JSONDecodeError:
+                raise
     if isinstance(data, list) and data:
         data = data[0]
     if not isinstance(data, dict):
@@ -563,7 +576,9 @@ def _generate_text(system_prompt: str, user_prompt: str, provider: str | None = 
     return _generate_anthropic(system_prompt, user_prompt)
 
 
-def _generate_and_parse_variants(system_prompt: str, user_prompt: str, provider: str | None, attempts: int = 2) -> list[dict]:
+def _generate_and_parse_variants(
+    system_prompt: str, user_prompt: str, provider: str | None, attempts: int = 3, length: int | None = None
+) -> list[dict]:
     """Некоторые провайдеры (GigaChat, локальные модели через Ollama) не так
     строго следуют инструкции «верни только JSON», как Claude/GPT/Gemini, и
     иногда возвращают слегка невалидный JSON. Вместо того чтобы сразу
@@ -572,10 +587,101 @@ def _generate_and_parse_variants(system_prompt: str, user_prompt: str, provider:
     for _ in range(max(1, attempts)):
         text = _generate_text(system_prompt, user_prompt, provider)
         try:
-            return _parse_variants(text)
+            variants = _parse_variants(text)
+            if length:
+                for v in variants:
+                    v["body"] = _ensure_length(v.get("body", ""), length, provider)
+            return variants
         except AIGenerationError as exc:
             last_exc = exc
     raise last_exc
+
+
+def _continue_body(body: str, target_length: int, provider: str | None) -> str:
+    """Просит модель дописать НОВЫЙ кусок текста в продолжение уже готового черновика.
+
+    Менее строгие модели (особенно GigaChat) на просьбу «дополни/перепиши длиннее» часто
+    просто возвращают текст почти той же длины — задача «дописать целиком» их не мотивирует
+    реально нарастить объём. Задача «допиши только продолжение» работает надёжнее."""
+    missing = max(target_length - len(body), 0)
+    system_prompt = (
+        "Ты — опытный контент-маркетолог и SMM-копирайтер. Пишешь продолжение уже начатого "
+        "поста на русском языке, сохраняя его тон и стиль. Отвечаешь ТОЛЬКО валидным JSON "
+        "без markdown-обёртки, без пояснений до или после.\n\n" + RUSSIAN_DESLOP_RULES
+    )
+    user_prompt = f"""Вот начало поста (уже готово, НЕ переписывай и не повторяй его — только продолжи):
+
+---
+{body}
+---
+
+Текущая длина черновика — {len(body)} знаков. Нужно дописать ещё примерно {missing} знаков
+НОВОГО текста, чтобы общий объём поста вышел на {target_length} знаков. Развей тему глубже:
+добавь конкретный пример, разбери ещё один аспект, приведи аргумент, дай практический совет —
+что-то по существу, а не «вода». Продолжение должно логично идти следом за концом черновика,
+в том же тоне и стиле, без повтора уже сказанного и без отдельного вступления.
+
+Верни JSON-объект с одним полем:
+- "continuation": только новый текст-продолжение (без черновика выше)
+
+Верни только JSON-объект, ничего больше."""
+    text = _generate_text(system_prompt, user_prompt, provider)
+    continuation = _extract_text_field(text, "continuation")
+    if continuation:
+        return body.rstrip() + "\n\n" + continuation
+    return body
+
+
+def _extract_text_field(text: str, field_name: str) -> str | None:
+    """Извлекает значение текстового поля из ответа модели по имени поля — устойчиво
+    к неполному JSON. GigaChat на подобных «однополевых» ответах иногда отдаёт:
+    валидный объект {"field": "..."}; объект без внешних скобок: "field": "...";
+    или вовсе значение без кавычек: "field": голый текст (даже не строка). Сначала
+    пробуем честный JSON, затем откатываемся на регулярку — берём всё после
+    `"field":` и снимаем внешние кавычки, если они есть."""
+    stripped = _strip_code_fence(text)
+    try:
+        data = _extract_json_object(stripped)
+        value = data.get(field_name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    except Exception:
+        pass
+
+    match = re.search(rf'"{re.escape(field_name)}"\s*:\s*(.*)', stripped, re.DOTALL)
+    if not match:
+        return None
+    value = match.group(1).strip().rstrip(",").rstrip("}").strip()
+    if value.startswith('"') and value.endswith('"') and len(value) >= 2:
+        value = value[1:-1]
+    elif value.startswith('"'):
+        value = value[1:]
+    return value.strip() or None
+
+
+def _ensure_length(body: str, target_length: int, provider: str | None, max_rounds: int = 3) -> str:
+    """Некоторые модели (особенно GigaChat) сильно недооценивают заданную длину текста в
+    инструкции промпта. Вместо того чтобы полагаться только на просьбу в промпте, после
+    генерации проверяем фактическую длину и, если она заметно меньше запрошенной,
+    дополнительными раундами дописываем текст продолжениями — пока не наберём хотя бы ~80%
+    от цели или не закончатся попытки."""
+    current = body
+    for _ in range(max_rounds):
+        if not current or len(current) >= target_length * 0.8:
+            break
+        new_current = current
+        # GigaChat иногда отдаёт слегка невалидный JSON (как и при основной генерации) —
+        # даём этому шагу несколько попыток, а не сдаёмся сразу на первой же ошибке разбора.
+        for _attempt in range(3):
+            try:
+                new_current = _continue_body(current, target_length, provider)
+                break
+            except Exception:
+                continue
+        if len(new_current) <= len(current):
+            break  # модель не смогла добавить текст ни с одной попытки — не зацикливаемся
+        current = new_current
+    return current
 
 
 def generate_posts(
@@ -591,7 +697,7 @@ def generate_posts(
 
     if not platform_ids:
         system_prompt, user_prompt = _build_prompts_for_platform(topic, brief, tone, None, variants, length)
-        return _generate_and_parse_variants(system_prompt, user_prompt, provider), []
+        return _generate_and_parse_variants(system_prompt, user_prompt, provider, length=length), []
 
     results: list[dict] = []
     errors: list[str] = []
@@ -601,7 +707,7 @@ def generate_posts(
         platform = _get_platform_context(platform_id)
         system_prompt, user_prompt = _build_prompts_for_platform(topic, brief, tone, platform, variants, length)
         try:
-            for item in _generate_and_parse_variants(system_prompt, user_prompt, provider):
+            for item in _generate_and_parse_variants(system_prompt, user_prompt, provider, length=length):
                 item["platform_id"] = platform_id
                 item["platform_name"] = platform["name"]
                 results.append(item)
