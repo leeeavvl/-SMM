@@ -610,9 +610,12 @@ def _generate_and_parse_variants(
             variants = _parse_variants(text)
             for v in variants:
                 body = _clean_body_artifacts(v.get("body", ""))
+                # Сначала чиним хук (эта правка переписывает текст целиком и может
+                # случайно ужать его), и только потом добиваем длину — чтобы
+                # финальный шаг проверки объёма был последним и решающим.
+                body = _ensure_no_banned_hook(body, provider)
                 if length:
                     body = _ensure_length(body, length, provider)
-                body = _ensure_no_banned_hook(body, provider)
                 v["body"] = body
             return variants
         except AIGenerationError as exc:
@@ -701,34 +704,49 @@ def _has_banned_hook(body: str) -> bool:
     return bool(_BANNED_HOOK_RE.match((body or "").strip()))
 
 
+def _split_hook(body: str) -> tuple[str, str]:
+    """Отделяет первую строку/фразу-хук от остального текста поста."""
+    first_line, sep, rest = body.partition("\n")
+    if sep and first_line.strip():
+        return first_line, rest
+    # Нет явного переноса строки в начале — берём первое предложение как хук.
+    match = re.match(r"(.+?[.!?])\s+(.*)", body, re.DOTALL)
+    if match:
+        return match.group(1), match.group(2)
+    return body, ""
+
+
 def _rewrite_banned_hook(body: str, provider: str | None) -> str:
+    """Просит модель придумать только НОВУЮ первую строку и склеивает её с остальным
+    текстом программно. Просить модель переписать весь пост целиком ненадёжно —
+    GigaChat при этом часто заодно сильно ужимает остальной текст."""
+    hook, rest = _split_hook(body)
     system_prompt = (
-        "Ты — опытный контент-маркетолог и SMM-копирайтер. Переписываешь только первую "
-        "строку (хук) готового поста на русском языке, весь остальной текст оставляешь "
-        "без изменений. Отвечаешь ТОЛЬКО валидным JSON без markdown-обёртки.\n\n"
-        + RUSSIAN_DESLOP_RULES
+        "Ты — опытный контент-маркетолог и SMM-копирайтер. Придумываешь только первую "
+        "строку (хук) поста на русском языке. Отвечаешь ТОЛЬКО валидным JSON без "
+        "markdown-обёртки.\n\n" + RUSSIAN_DESLOP_RULES
     )
-    user_prompt = f"""Вот готовый пост — его первая строка (хук) нарушает правило: начинается
-с «представь» / «представьте» / «вообрази» в любом виде — самого заезженного и запрещённого приёма.
+    user_prompt = f"""Первая строка (хук) поста нарушает правило: начинается с «представь» /
+«представьте» / «вообрази» в любом виде — самого заезженного и запрещённого приёма.
 
----
-{body}
----
+Текущий (запрещённый) хук: {hook}
 
-Перепиши ТОЛЬКО первую строку (хук) — используй другой приём: конкретную цифру или факт,
-прямой вопрос к читателю про его реальную ситуацию, короткий кейс с именем, смелое
-утверждение или прямое обращение по факту. Не начинай с «представь» ни в каком виде.
-Остальной текст поста НЕ трогай и не сокращай — оставь дословно как есть, замени только
-первую строку.
+Остальной текст поста — только для контекста темы и тона, НЕ переписывай его:
+{rest[:500]}
+
+Придумай ОДНУ новую первую строку взамен — используй другой приём: конкретную цифру
+или факт, прямой вопрос к читателю про его реальную ситуацию, короткий кейс с именем,
+смелое утверждение или прямое обращение по факту. Не начинай с «представь» ни в каком
+виде. Строка должна логично продолжаться остальным текстом поста.
 
 Верни JSON-объект с одним полем:
-- "body": весь пост целиком, с новой первой строкой, остальное без изменений
+- "hook": новая первая строка (только она, без остального текста)
 
 Верни только JSON-объект, ничего больше."""
     text = _generate_text(system_prompt, user_prompt, provider)
-    new_body = _extract_text_field(text, "body")
-    if new_body:
-        return new_body
+    new_hook = _extract_text_field(text, "hook")
+    if new_hook and not _has_banned_hook(new_hook) and not _looks_malformed(new_hook):
+        return f"{new_hook.strip()}\n{rest}" if rest else new_hook.strip()
     return body
 
 
@@ -775,7 +793,14 @@ def _ensure_no_banned_hook(body: str, provider: str | None, max_rounds: int = 3)
                 candidate = _rewrite_banned_hook(current, provider)
             except Exception:
                 continue
-            if candidate != current and not _looks_malformed(candidate):
+            # Задача — заменить только первую строку, остальной текст должен остаться
+            # тем же по объёму. Если модель вместо этого пересказала пост заметно короче
+            # (случается у GigaChat), это явный брак — не принимаем такую правку.
+            if (
+                candidate != current
+                and not _looks_malformed(candidate)
+                and len(candidate) >= len(current) * 0.85
+            ):
                 new_current = candidate
                 break
         if new_current == current:
