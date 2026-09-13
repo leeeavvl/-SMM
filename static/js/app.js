@@ -1499,14 +1499,12 @@ function addPlanRow() {
   `;
   tbody.appendChild(tr);
 
-  const contentSelect = tr.querySelector(".plan-row-content");
   const formatSelect = tr.querySelector(".plan-row-format");
-  function refreshFormats() {
-    const formats = opts.formats_by_content_type[contentSelect.value] || [];
-    formatSelect.innerHTML = formats.map((f) => `<option value="${f}">${f}</option>`).join("");
-  }
-  contentSelect.addEventListener("change", refreshFormats);
-  refreshFormats();
+  // Список форматов — полный, из всех типов контента сразу (не зависит от выбранного
+  // "Типа контента"), плюс пустой вариант — тогда формат для темы подберёт сама ИИ.
+  const allFormats = [...new Set(Object.values(opts.formats_by_content_type).flat())];
+  formatSelect.innerHTML =
+    `<option value="">— (ИИ подберёт сам)</option>` + allFormats.map((f) => `<option value="${f}">${f}</option>`).join("");
 
   tr.querySelector("button").addEventListener("click", () => {
     if (tbody.children.length > 1) tr.remove();

@@ -81,7 +81,7 @@ class AIGenerateRequest(BaseModel):
 class PlanRowSpec(BaseModel):
     direction: str = Field(min_length=1)
     content_type: str = Field(min_length=1)
-    format: str = Field(min_length=1)
+    format: str = ""  # пусто — формат не задан пользователем, ИИ выбирает сам
     quantity: int = Field(ge=1, le=30)
 
 
