@@ -94,6 +94,12 @@ RUSSIAN_DESLOP_RULES = """ПРАВИЛА СТИЛЯ ДЛЯ РУССКОГО ТЕ
 помимо этого, следовательно, итак, в заключение, в целом можно сказать, подводя итог,
 надеюсь, эта статья/пост была полезна.
 
+ЗАПРЕЩЁННЫЕ ОТКРЫВАЮЩИЕ ФРАЗЫ — этот пост НЕ должен начинаться ни с одной из них
+(и ни с чего похожего по смыслу и конструкции), даже если тема про студента/карьеру:
+«представь», «представьте», «представь себе», «представь, что ты», «вообрази», «вообразите»,
+«а что если бы», «ты студент/выпускник и мечтаешь о...». Это САМЫЙ заезженный шаблон у ИИ —
+если тема про студента-юриста или начало карьеры, ищи другой заход (см. пункт 1 ниже).
+
 СТРУКТУРЫ — запрещены полностью:
 1. Конструкция «не X, а Y» в любом виде, включая «это не X. это Y.».
 2. Ряды коротких рубленых предложений подряд ради драматичности.
@@ -114,9 +120,18 @@ RUSSIAN_DESLOP_RULES = """ПРАВИЛА СТИЛЯ ДЛЯ РУССКОГО ТЕ
 если они читаются на одном дыхании.
 
 СТРУКТУРА ПОСТА — соблюдай для каждого текста:
-1. Первая строка — хук, который цепляет за 1-2 секунды: конкретный вопрос к читателю,
-   неожиданный факт, узнаваемая боль или прямое обращение. Никогда не начинай с темы
-   дословно («Сегодня поговорим о...») и не начинай с общих фраз о важности темы.
+1. Первая строка — хук, который цепляет за 1-2 секунды. Каждый раз выбирай РАЗНЫЙ тип
+   хука, подходящий именно этой теме, а не один и тот же приём из раза в раз — например:
+   - конкретная цифра или статистика прямо в первой строке;
+   - неожиданный или спорный факт;
+   - прямой вопрос к читателю про его реальную ситуацию (без «представь себе» — читатель
+     и так в этой ситуации, обращайся к ней напрямую: «Не знаешь, с чего начать...»);
+   - короткая история/кейс с именем, началом сразу с сути, без «представь»;
+   - смелое утверждение или мини-миф, который пост дальше опровергает;
+   - прямое обращение по факту («Студентам-юристам: ...», «Если ты ищешь первую стажировку...»).
+   Никогда не начинай с темы дословно («Сегодня поговорим о...»), с общих фраз о важности
+   темы и НЕ начинай с «представь» / «представьте» / «вообрази» в любом виде — см. список
+   запрещённых фраз выше.
 2. Основная часть разбита на короткие смысловые блоки (2-4 строки), между ними —
    пустая строка: текст должен легко читаться с телефона, не сплошной стеной.
 3. Внутри блоков — конкретика: цифры, примеры, шаги, имена, а не общие рассуждения
@@ -588,9 +603,12 @@ def _generate_and_parse_variants(
         text = _generate_text(system_prompt, user_prompt, provider)
         try:
             variants = _parse_variants(text)
-            if length:
-                for v in variants:
-                    v["body"] = _ensure_length(v.get("body", ""), length, provider)
+            for v in variants:
+                body = _clean_body_artifacts(v.get("body", ""))
+                if length:
+                    body = _ensure_length(body, length, provider)
+                body = _ensure_no_banned_hook(body, provider)
+                v["body"] = body
             return variants
         except AIGenerationError as exc:
             last_exc = exc
@@ -627,7 +645,7 @@ def _continue_body(body: str, target_length: int, provider: str | None) -> str:
 Верни только JSON-объект, ничего больше."""
     text = _generate_text(system_prompt, user_prompt, provider)
     continuation = _extract_text_field(text, "continuation")
-    if continuation:
+    if continuation and not _looks_malformed(continuation):
         return body.rstrip() + "\n\n" + continuation
     return body
 
@@ -651,12 +669,116 @@ def _extract_text_field(text: str, field_name: str) -> str | None:
     match = re.search(rf'"{re.escape(field_name)}"\s*:\s*(.*)', stripped, re.DOTALL)
     if not match:
         return None
-    value = match.group(1).strip().rstrip(",").rstrip("}").strip()
-    if value.startswith('"') and value.endswith('"') and len(value) >= 2:
-        value = value[1:-1]
-    elif value.startswith('"'):
-        value = value[1:]
+    value = match.group(1).strip().rstrip(",").strip()
+    # Снимаем внешние кавычки и/или фигурные скобки — GigaChat иногда путает их
+    # между собой как обёртку строкового значения (например `{"текст"}` вместо
+    # `"текст"`), максимум пара слоёв обёртки.
+    for _ in range(2):
+        if len(value) >= 2 and value[0] in "{\"" and value[-1] in "}\"":
+            value = value[1:-1].strip()
+        else:
+            break
     return value.strip() or None
+
+
+_BANNED_HOOK_RE = re.compile(
+    # [\W\d] — любые не-буквенные символы (эмодзи, пробелы, знаки препинания, цифры)
+    # перед хуком: посты часто начинаются с эмодзи-приветствия перед самим текстом.
+    r"^[\W\d]{0,15}(представь(те)?\b|вообрази(те)?\b)",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def _has_banned_hook(body: str) -> bool:
+    """«Представь себе...» — самый заезженный шаблон хука у слабых моделей (GigaChat
+    его выдаёт почти всегда, несмотря на прямой запрет в системном промпте). Проверяем
+    результат программно и, если нужно, отдельно просим переписать только первую строку."""
+    return bool(_BANNED_HOOK_RE.match((body or "").strip()))
+
+
+def _rewrite_banned_hook(body: str, provider: str | None) -> str:
+    system_prompt = (
+        "Ты — опытный контент-маркетолог и SMM-копирайтер. Переписываешь только первую "
+        "строку (хук) готового поста на русском языке, весь остальной текст оставляешь "
+        "без изменений. Отвечаешь ТОЛЬКО валидным JSON без markdown-обёртки.\n\n"
+        + RUSSIAN_DESLOP_RULES
+    )
+    user_prompt = f"""Вот готовый пост — его первая строка (хук) нарушает правило: начинается
+с «представь» / «представьте» / «вообрази» в любом виде — самого заезженного и запрещённого приёма.
+
+---
+{body}
+---
+
+Перепиши ТОЛЬКО первую строку (хук) — используй другой приём: конкретную цифру или факт,
+прямой вопрос к читателю про его реальную ситуацию, короткий кейс с именем, смелое
+утверждение или прямое обращение по факту. Не начинай с «представь» ни в каком виде.
+Остальной текст поста НЕ трогай и не сокращай — оставь дословно как есть, замени только
+первую строку.
+
+Верни JSON-объект с одним полем:
+- "body": весь пост целиком, с новой первой строкой, остальное без изменений
+
+Верни только JSON-объект, ничего больше."""
+    text = _generate_text(system_prompt, user_prompt, provider)
+    new_body = _extract_text_field(text, "body")
+    if new_body:
+        return new_body
+    return body
+
+
+_MALFORMED_PREFIX_RE = re.compile(r'^\s*[^\n":{}]{0,40}"\s*:\s*"?')
+
+
+def _looks_malformed(text: str) -> bool:
+    """Грубая проверка на то, что текст — обрывок JSON, а не читаемый пост: начинается
+    со служебных символов JSON (иногда с прилипшим обрывком ключа вроде `0":"...`),
+    которые не должны попадать в текст поста."""
+    if not text:
+        return True
+    if text[:1] in "{\":,":
+        return True
+    return bool(_MALFORMED_PREFIX_RE.match(text))
+
+
+def _clean_body_artifacts(text: str) -> str:
+    """Иногда модель вставляет в само значение строки обрывок JSON-ключа/обёртки
+    (например `0":"Текст...` или `{"Текст...`) — подчищаем такие артефакты в начале,
+    не трогая остальной текст."""
+    cleaned = text or ""
+    for _ in range(2):
+        match = _MALFORMED_PREFIX_RE.match(cleaned)
+        if match and match.end() > 0:
+            cleaned = cleaned[match.end():].lstrip()
+        elif cleaned[:1] in "{\":,":
+            cleaned = cleaned[1:].lstrip()
+        else:
+            break
+    return cleaned
+
+
+def _ensure_no_banned_hook(body: str, provider: str | None, max_rounds: int = 3) -> str:
+    current = body
+    for _ in range(max_rounds):
+        if not _has_banned_hook(current):
+            break
+        new_current = current
+        # Как и при добивании длины — GigaChat не всегда с первого раза отдаёт валидный
+        # JSON на этот запрос, даём пару попыток прежде чем сдаться в этом раунде.
+        for _attempt in range(2):
+            try:
+                candidate = _rewrite_banned_hook(current, provider)
+            except Exception:
+                continue
+            if candidate != current and not _looks_malformed(candidate):
+                new_current = candidate
+                break
+        if new_current == current:
+            # Не удалось нормально переписать хук — лучше оставить исходный текст
+            # с шаблонным хуком, чем показать пользователю текст с артефактами разбора.
+            break
+        current = new_current
+    return current
 
 
 def _ensure_length(body: str, target_length: int, provider: str | None, max_rounds: int = 3) -> str:
