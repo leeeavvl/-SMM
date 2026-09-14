@@ -4,6 +4,8 @@ const state = {
   assistantTools: [],
   assistantMode: "tools",
   assistantCategory: "all",
+  planItems: [],
+  planBatchFilter: null,
 };
 
 const STATUS_LABELS = {
@@ -1480,8 +1482,14 @@ async function loadPlan() {
   }
 
   const [planData, statsData] = await Promise.all([api("/api/plan"), api("/api/stats")]);
+  state.planItems = planData;
   renderPlan(planData);
   renderStats(statsData);
+}
+
+function filterPlanByBatch(batchId) {
+  state.planBatchFilter = state.planBatchFilter === batchId ? null : batchId;
+  renderPlan(state.planItems || []);
 }
 
 function addPlanRow() {
@@ -1542,8 +1550,11 @@ function renderPlanBatches(items) {
       const num = batches.length - idx;
       const when = formatDateTime(batchItems[0].created_at);
       const platforms = [...new Set(batchItems.map((i) => i.platform_id))].join(", ");
-      return `<div class="plan-batch-row">
-        <span class="plan-batch-label">Партия ${num} · ${when} · ${batchItems.length} пункт(ов) · ${escapeHtml(platforms)}</span>
+      const active = state.planBatchFilter === batchId;
+      return `<div class="plan-batch-row ${active ? "active" : ""}">
+        <button type="button" class="plan-batch-label" onclick="filterPlanByBatch('${batchId}')" title="Показать только эту партию в списке ниже">
+          ${active ? "👁 " : ""}Партия ${num} · ${when} · ${batchItems.length} пункт(ов) · ${escapeHtml(platforms)}
+        </button>
         <button class="btn small danger" onclick="deletePlanBatch('${batchId}')">Удалить партию</button>
       </div>`;
     })
@@ -1555,19 +1566,35 @@ async function deletePlanBatch(batchId) {
   try {
     const res = await api(`/api/plan/batch/${batchId}`, { method: "DELETE" });
     toast(`Удалено пунктов: ${res.deleted}`);
+    if (state.planBatchFilter === batchId) state.planBatchFilter = null;
     loadPlan();
   } catch (e) {
     toast(e.message, true);
   }
 }
 
-function renderPlan(items) {
-  renderPlanBatches(items);
-  const { numberMap } = getBatchNumberMap(items);
+function renderPlan(allItems) {
+  renderPlanBatches(allItems);
+  const { numberMap } = getBatchNumberMap(allItems);
   const list = document.getElementById("plan-list");
   list.innerHTML = "";
+
+  if (state.planBatchFilter) {
+    const num = numberMap.get(state.planBatchFilter);
+    list.insertAdjacentHTML(
+      "beforeend",
+      `<div class="plan-filter-banner">Показана только партия ${num || ""}.
+        <button type="button" class="link-toggle" onclick="filterPlanByBatch('${state.planBatchFilter}')">Показать весь план</button>
+      </div>`
+    );
+  }
+
+  const items = state.planBatchFilter ? allItems.filter((it) => it.batch_id === state.planBatchFilter) : allItems;
   if (!items.length) {
-    list.innerHTML = `<div class="cbody">План пока пуст. Настройте строки выше и нажмите «Сгенерировать план».</div>`;
+    list.insertAdjacentHTML(
+      "beforeend",
+      `<div class="cbody">${state.planBatchFilter ? "В этой партии не осталось пунктов." : "План пока пуст. Настройте строки выше и нажмите «Сгенерировать план»."}</div>`
+    );
     return;
   }
   const byDate = new Map();
