@@ -134,11 +134,15 @@ def write_post(plan_id: int, payload: PlanWriteRequest):
         f"Тип контента: {plan_item['content_type']}. "
         f"Формат публикации: {plan_item['format']}."
     )
+    # Тон в пункте плана отдельно не хранится — но если тип контента "Продающий",
+    # пост должен писаться с продающим тоном (иначе он получится рекламным по типу
+    # контента, но с инструкцией избегать рекламных призывов — противоречие).
+    plan_tone = "продающий" if (plan_item["content_type"] or "").strip().lower() == "продающий" else "нейтральный"
     try:
         variants, errors = generate_posts(
             topic=plan_item["topic"],
             brief=plan_brief,
-            tone="нейтральный",
+            tone=plan_tone,
             platform_ids=[plan_item["platform_id"]],
             variants=1,
             length=payload.length,
