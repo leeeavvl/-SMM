@@ -1579,11 +1579,19 @@ function renderPlan(allItems) {
   const list = document.getElementById("plan-list");
   list.innerHTML = "";
 
+  // Партия, на которую указывает фильтр, могла лишиться всех пунктов не через
+  // «Удалить партию» целиком, а по одному (обычным «Удалить» на пункте) — тогда
+  // её больше нет среди текущих партий. Держать в этом случае «залипший» фильтр
+  // с пустым номером и пустым списком бессмысленно — сбрасываем его сами.
+  if (state.planBatchFilter && !numberMap.has(state.planBatchFilter)) {
+    state.planBatchFilter = null;
+  }
+
   if (state.planBatchFilter) {
     const num = numberMap.get(state.planBatchFilter);
     list.insertAdjacentHTML(
       "beforeend",
-      `<div class="plan-filter-banner">Показана только партия ${num || ""}.
+      `<div class="plan-filter-banner">Показана только партия ${num}.
         <button type="button" class="link-toggle" onclick="filterPlanByBatch('${state.planBatchFilter}')">Показать весь план</button>
       </div>`
     );
@@ -1593,7 +1601,7 @@ function renderPlan(allItems) {
   if (!items.length) {
     list.insertAdjacentHTML(
       "beforeend",
-      `<div class="cbody">${state.planBatchFilter ? "В этой партии не осталось пунктов." : "План пока пуст. Настройте строки выше и нажмите «Сгенерировать план»."}</div>`
+      `<div class="cbody">План пока пуст. Настройте строки выше и нажмите «Сгенерировать план».</div>`
     );
     return;
   }
