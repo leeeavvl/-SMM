@@ -968,12 +968,23 @@ def _plan_row_prompt(
     content_type: str,
     fmt: str,
     used_topics: list[str],
+    all_topics: list[str] | None = None,
 ) -> str:
     used_block = (
         "Уже запланированные темы этой же комбинации направление/контент/формат "
         "(НЕ повторяй их и не пиши близкие по смыслу):\n" + "\n".join(f"- {t}" for t in used_topics)
         if used_topics
         else "Тем в этой комбинации ещё не было — это первый пост такого типа."
+    )
+    other_topics = [t for t in (all_topics or []) if t not in used_topics]
+    diversity_block = (
+        "\n\nТемы, уже использованные в ДРУГИХ комбинациях направление/контент/формат этого же "
+        "плана (весь план не должен крутиться вокруг одной и той же истории вроде "
+        "«стажировка/резюме/собеседование» — если тема ниже не про трудоустройство напрямую, "
+        "не своди её к этому; используй как ориентир, чтобы выбрать по-настоящему другой "
+        "угол, а не близкую по смыслу тему):\n" + "\n".join(f"- {t}" for t in other_topics[-15:])
+        if other_topics
+        else ""
     )
     format_line = (
         f"- Формат публикации: {fmt}"
@@ -998,11 +1009,13 @@ def _plan_row_prompt(
 - Тип контента: {content_type}
 {format_line}
 
-{used_block}
+{used_block}{diversity_block}
 
 Придумай ОДНУ конкретную тему поста, которая точно соответствует направлению «{direction}»,
 типу контента «{content_type}» и {format_clause} — не общими словами, а готовую формулировку,
-которую можно сразу использовать как тему для написания текста.
+которую можно сразу использовать как тему для написания текста. Тема должна реально
+раскрывать направление «{direction}» своим собственным сюжетом, а не быть очередной вариацией
+на тему поиска работы/резюме/собеседования, если направление не об этом напрямую.
 
 Верни ОДИН JSON-объект (не массив) с полем:
 - "topic": тема поста
@@ -1071,13 +1084,15 @@ def generate_plan(
     results: list[dict] = []
     errors: list[str] = []
     used_topics_by_combo: dict[tuple[str, str, str], list[str]] = {}
+    all_topics: list[str] = []  # темы по ВСЕМУ плану — для разнообразия между комбинациями
 
     for day_offset in range(period_days):
         for row in day_plan[day_offset]:
             combo_key = (row["direction"], row["content_type"], row["format"])
             used_topics = used_topics_by_combo.setdefault(combo_key, [])
             user_prompt = _plan_row_prompt(
-                tone, platform, brief_block, row["direction"], row["content_type"], row["format"], used_topics
+                tone, platform, brief_block, row["direction"], row["content_type"], row["format"],
+                used_topics, all_topics,
             )
             # До 3 попыток: небольшие локальные модели иногда возвращают "рамблинг"
             # вместо чистой темы (смесь языков, обрывки JSON) — такой ответ отбраковывается
@@ -1111,6 +1126,7 @@ def generate_plan(
                     }
                 )
                 used_topics.append(topic)
+                all_topics.append(topic)
             elif last_exc:
                 errors.append(f"{combo_key[0]}/{combo_key[1]}/{combo_key[2]} (день {day_offset}): {last_exc}")
 
