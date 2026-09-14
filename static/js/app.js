@@ -1513,7 +1513,57 @@ function addPlanRow() {
 
 document.getElementById("btn-add-plan-row").addEventListener("click", addPlanRow);
 
+function getBatchNumberMap(items) {
+  const byBatch = new Map();
+  items.forEach((it) => {
+    if (!it.batch_id) return;
+    if (!byBatch.has(it.batch_id)) byBatch.set(it.batch_id, []);
+    byBatch.get(it.batch_id).push(it);
+  });
+  const batches = Array.from(byBatch.entries()).sort((a, b) => (a[1][0].created_at < b[1][0].created_at ? 1 : -1));
+  const numberMap = new Map();
+  batches.forEach(([batchId], idx) => numberMap.set(batchId, batches.length - idx));
+  return { batches, numberMap };
+}
+
+function renderPlanBatches(items) {
+  const block = document.getElementById("plan-batches-block");
+  const list = document.getElementById("plan-batches-list");
+  const { batches } = getBatchNumberMap(items);
+
+  if (!batches.length) {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+
+  list.innerHTML = batches
+    .map(([batchId, batchItems], idx) => {
+      const num = batches.length - idx;
+      const when = formatDateTime(batchItems[0].created_at);
+      const platforms = [...new Set(batchItems.map((i) => i.platform_id))].join(", ");
+      return `<div class="plan-batch-row">
+        <span class="plan-batch-label">Партия ${num} · ${when} · ${batchItems.length} пункт(ов) · ${escapeHtml(platforms)}</span>
+        <button class="btn small danger" onclick="deletePlanBatch('${batchId}')">Удалить партию</button>
+      </div>`;
+    })
+    .join("");
+}
+
+async function deletePlanBatch(batchId) {
+  if (!confirm("Удалить всю эту партию плана? Действие необратимо.")) return;
+  try {
+    const res = await api(`/api/plan/batch/${batchId}`, { method: "DELETE" });
+    toast(`Удалено пунктов: ${res.deleted}`);
+    loadPlan();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
 function renderPlan(items) {
+  renderPlanBatches(items);
+  const { numberMap } = getBatchNumberMap(items);
   const list = document.getElementById("plan-list");
   list.innerHTML = "";
   if (!items.length) {
@@ -1536,9 +1586,12 @@ function renderPlan(items) {
       dayItems.forEach((it) => {
         const row = document.createElement("div");
         row.className = "plan-item";
+        const batchNum = numberMap.get(it.batch_id);
+        const batchBadge = batchNum ? `<span class="plan-item-batch" title="Партия ${batchNum}, сгенерирована ${formatDateTime(it.created_at)}">🕐 партия ${batchNum}</span>` : "";
         row.innerHTML = `
           <div class="plan-item-main">
             <span class="plan-item-platform">${escapeHtml(it.platform_id)}</span>
+            ${batchBadge}
             <span class="plan-item-topic">${escapeHtml(it.topic)}</span>
             <div class="plan-item-format">${[it.direction, it.content_type, it.format].filter(Boolean).map(escapeHtml).join(" · ") || escapeHtml(it.format_hint || "")} — ${PLAN_STATUS_LABELS[it.status] || it.status}</div>
           </div>

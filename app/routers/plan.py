@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 
 from fastapi import APIRouter, HTTPException
 
@@ -78,12 +79,16 @@ def generate(payload: PlanGenerateRequest):
     except AIGenerationError as exc:
         raise HTTPException(502, str(exc)) from exc
 
+    # Отдельный batch_id на каждый запуск генерации — так в «Контент-плане» видно,
+    # что появилось в каком запуске, даже если критерии и период совпадают.
+    batch_id = uuid.uuid4().hex[:8]
+
     with db_cursor() as cur:
         for item in items:
             plan_date = (start_date + dt.timedelta(days=item["day_offset"])).isoformat()
             cur.execute(
-                "INSERT INTO content_plan (plan_date, platform_id, topic, direction, content_type, format, status) "
-                "VALUES (?, ?, ?, ?, ?, ?, 'idea')",
+                "INSERT INTO content_plan (plan_date, platform_id, topic, direction, content_type, format, status, batch_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'idea', ?)",
                 (
                     plan_date,
                     item["platform_id"],
@@ -91,6 +96,7 @@ def generate(payload: PlanGenerateRequest):
                     item["direction"],
                     item["content_type"],
                     item["format"],
+                    batch_id,
                 ),
             )
         cur.execute(
@@ -245,6 +251,16 @@ def approve_post(plan_id: int):
             (plan_id,),
         )
         return row_to_dict(cur.fetchone())
+
+
+@router.delete("/batch/{batch_id}")
+def delete_plan_batch(batch_id: str):
+    with db_cursor() as cur:
+        cur.execute("DELETE FROM content_plan WHERE batch_id = ?", (batch_id,))
+        deleted = cur.rowcount
+    if deleted == 0:
+        raise HTTPException(404, "Партия не найдена")
+    return {"ok": True, "deleted": deleted}
 
 
 @router.delete("/{plan_id}")

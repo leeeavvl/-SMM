@@ -150,6 +150,7 @@ def init_db() -> None:
         _ensure_column(cur, "content_plan", "synced_to_sheet", "synced_to_sheet INTEGER NOT NULL DEFAULT 0")
         _ensure_column(cur, "content_plan", "sheet_tab", "sheet_tab TEXT")
         _ensure_column(cur, "content_plan", "sheet_row", "sheet_row INTEGER")
+        _ensure_column(cur, "content_plan", "batch_id", "batch_id TEXT")
         for platform in PLATFORMS:
             cur.execute(
                 "INSERT OR IGNORE INTO platforms (id, connected, credentials) VALUES (?, 0, '{}')",

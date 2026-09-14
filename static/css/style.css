@@ -318,6 +318,18 @@ h2 { font-size: 16px; color: var(--muted); margin: 28px 0 12px; }
 .plan-item-topic { font-size: 13px; }
 .plan-item-format { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .plan-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.plan-item-batch { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 6px; background: var(--panel-2); color: var(--accent-2); margin-right: 8px; cursor: help; }
+
+.plan-batch-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.plan-batch-row:first-child { border-top: none; }
+.plan-batch-label { font-size: 13px; }
 
 .perf-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border); }
 .analysis-suggestions { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
