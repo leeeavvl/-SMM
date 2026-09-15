@@ -18,13 +18,51 @@ const STATUS_LABELS = {
   canceled: "Отменено",
 };
 
+// В БД время хранится в UTC (SQLite datetime('now')/toISOString() при сохранении) —
+// для показа человеку и для поля <input type="datetime-local"> переводим его в
+// московское время явно (а не полагаемся на таймзону браузера — так корректно
+// независимо от того, где физически находится человек, открывший приложение).
+function _parseSqlUtc(sqlDateTime) {
+  const m = (sqlDateTime || "").match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(:(\d{2}))?/);
+  if (!m) return null;
+  const [, y, mo, d, h, mi, , s] = m;
+  return new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +(s || 0)));
+}
+
 function formatDateTime(sqlDateTime) {
-  if (!sqlDateTime) return "";
-  // Формат из БД: "YYYY-MM-DD HH:MM:SS" (локальное время сервера) -> "ДД.ММ.ГГГГ ЧЧ:ММ"
-  const m = sqlDateTime.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-  if (!m) return sqlDateTime;
+  const date = _parseSqlUtc(sqlDateTime);
+  if (!date) return sqlDateTime || "";
+  const parts = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(date);
+  const get = (type) => parts.find((p) => p.type === type)?.value || "";
+  return `${get("day")}.${get("month")}.${get("year")} ${get("hour")}:${get("minute")}`;
+}
+
+// То же самое, но в формате для <input type="datetime-local"> (YYYY-MM-DDTHH:MM).
+function sqlUtcToDatetimeLocalValue(sqlDateTime) {
+  const date = _parseSqlUtc(sqlDateTime);
+  if (!date) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(date);
+  const get = (type) => parts.find((p) => p.type === type)?.value || "";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+}
+
+// Обратное преобразование: значение из <input type="datetime-local"> считаем
+// московским временем (UTC+3, в России нет перехода на летнее/зимнее) и переводим
+// в UTC-строку для сохранения в БД, где хранится именно UTC.
+function datetimeLocalMoscowToSqlUtc(value) {
+  if (!value) return null;
+  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return null;
   const [, y, mo, d, h, mi] = m;
-  return `${d}.${mo}.${y} ${h}:${mi}`;
+  const utc = new Date(Date.UTC(+y, +mo - 1, +d, +h - 3, +mi));
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${utc.getUTCFullYear()}-${pad(utc.getUTCMonth() + 1)}-${pad(utc.getUTCDate())} ${pad(utc.getUTCHours())}:${pad(utc.getUTCMinutes())}:00`;
 }
 
 function statusLabel(s) {
@@ -661,7 +699,7 @@ async function openContentModal(id, prefill) {
   // на которое он поставлен, чтобы её было видно сразу при открытии поста.
   const scheduledPlatform = lastLoadedContentPlatforms.find((p) => p.status === "queued" && p.scheduled_at);
   document.getElementById("content-schedule").value = scheduledPlatform
-    ? scheduledPlatform.scheduled_at.replace(" ", "T").slice(0, 16)
+    ? sqlUtcToDatetimeLocalValue(scheduledPlatform.scheduled_at)
     : "";
   document.getElementById("content-preview").hidden = true;
   document.getElementById("content-body").hidden = false;
@@ -964,7 +1002,7 @@ document.getElementById("btn-schedule-post").addEventListener("click", async () 
       method: "POST",
       body: JSON.stringify({
         platform_ids: platformIds,
-        scheduled_at: new Date(scheduleVal).toISOString().slice(0, 19).replace("T", " "),
+        scheduled_at: datetimeLocalMoscowToSqlUtc(scheduleVal),
       }),
     });
     await linkToPlanItemIfNeeded(saved.id);
@@ -1011,7 +1049,7 @@ document.getElementById("btn-confirm-publish").addEventListener("click", async (
   const scheduleVal = document.getElementById("publish-schedule").value;
   const payload = {
     platform_ids: platformIds,
-    scheduled_at: scheduleVal ? new Date(scheduleVal).toISOString().slice(0, 19).replace("T", " ") : null,
+    scheduled_at: scheduleVal ? datetimeLocalMoscowToSqlUtc(scheduleVal) : null,
   };
   try {
     await api(`/api/content/${contentId}/publish`, { method: "POST", body: JSON.stringify(payload) });
