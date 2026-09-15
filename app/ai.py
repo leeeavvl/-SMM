@@ -931,6 +931,34 @@ def _strip_trailing_tip_block(text: str) -> str:
     return "\n\n".join(paragraphs).strip()
 
 
+# Последний рубеж защиты от «Представь:»/«Вообрази:» в начале поста — на случай, если
+# ни одна из попыток переписать хук через ИИ не удалась (GigaChat иногда упорно не
+# отдаёт валидную замену за все раунды). Вместо того чтобы показать пользователю
+# текст с самым заезженным шаблоном хука, детерминированно вырезаем сам оборот
+# («Представь:», «Вообрази себе,», «Представьте, что») и с большой буквы продолжаем
+# тем, что шло дальше. Стилистически это скромнее творческого нового хука, но
+# гарантированно убирает запрещённую фразу.
+_BANNED_HOOK_PREFIX_STRIP_RE = re.compile(
+    r"^([\W\d]{0,15})(представь(те)?|вообрази(те)?)\b(\s*себе\b)?[,:]?\s*(что\b\s*)?",
+    re.IGNORECASE | re.UNICODE,
+)
+
+
+def _strip_banned_hook_prefix(body: str) -> str:
+    if not body:
+        return body
+    stripped = body.strip()
+    match = _BANNED_HOOK_PREFIX_STRIP_RE.match(stripped)
+    if not match:
+        return body
+    leading = match.group(1) or ""
+    rest = stripped[match.end():].lstrip()
+    if rest:
+        rest = rest[0].upper() + rest[1:]
+    result = f"{leading}{rest}" if leading.strip() else rest
+    return result.strip() or body
+
+
 def _ensure_no_banned_hook(body: str, provider: str | None, max_rounds: int = 3) -> str:
     current = body
     for _ in range(max_rounds):
@@ -955,10 +983,12 @@ def _ensure_no_banned_hook(body: str, provider: str | None, max_rounds: int = 3)
                 new_current = candidate
                 break
         if new_current == current:
-            # Не удалось нормально переписать хук — лучше оставить исходный текст
-            # с шаблонным хуком, чем показать пользователю текст с артефактами разбора.
+            # Не удалось нормально переписать хук через ИИ ни в одном раунде — прежде
+            # чем сдаться, пробуем детерминированную зачистку самого оборота.
             break
         current = new_current
+    if _has_banned_hook(current):
+        current = _strip_banned_hook_prefix(current)
     return current
 
 
