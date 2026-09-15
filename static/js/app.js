@@ -121,6 +121,37 @@ async function loadDashboard() {
       `<label class="check-item"><input type="checkbox" value="${p.id}"> ${p.name}</label>`
     );
   });
+
+  await fillHeroPlanFields();
+}
+
+async function fillHeroPlanFields() {
+  if (!state.planOptions) {
+    state.planOptions = await api("/api/plan/options");
+  }
+  const opts = state.planOptions;
+
+  const directionSelect = document.getElementById("hero-direction");
+  if (!directionSelect.dataset.filled) {
+    directionSelect.innerHTML =
+      `<option value="">— (не указано)</option>` + opts.directions.map((d) => `<option value="${d}">${d}</option>`).join("");
+    directionSelect.dataset.filled = "1";
+  }
+
+  const contentTypeSelect = document.getElementById("hero-content-type");
+  if (!contentTypeSelect.dataset.filled) {
+    contentTypeSelect.innerHTML =
+      `<option value="">— (не указано)</option>` + opts.content_types.map((c) => `<option value="${c}">${c}</option>`).join("");
+    contentTypeSelect.dataset.filled = "1";
+  }
+
+  const formatSelect = document.getElementById("hero-format");
+  if (!formatSelect.dataset.filled) {
+    const allFormats = [...new Set(Object.values(opts.formats_by_content_type).flat())];
+    formatSelect.innerHTML =
+      `<option value="">— (ИИ подберёт сам)</option>` + allFormats.map((f) => `<option value="${f}">${f}</option>`).join("");
+    formatSelect.dataset.filled = "1";
+  }
 }
 
 function platformInitials(name) {
@@ -1375,9 +1406,18 @@ document.getElementById("hero-generate-btn").addEventListener("click", async () 
     return;
   }
   const lengthValue = document.getElementById("hero-length").value.trim();
+  const direction = document.getElementById("hero-direction").value;
+  const contentType = document.getElementById("hero-content-type").value;
+  const format = document.getElementById("hero-format").value;
+  const structuredBits = [];
+  if (direction) structuredBits.push(`Направление/рубрика: ${direction}.`);
+  if (contentType) structuredBits.push(`Тип контента: ${contentType}.`);
+  if (format) structuredBits.push(`Формат публикации: ${format}.`);
+  const userBrief = document.getElementById("hero-brief").value.trim();
+  const brief = [structuredBits.join(" "), userBrief].filter(Boolean).join("\n");
   const payload = {
     topic,
-    brief: document.getElementById("hero-brief").value,
+    brief,
     tone: document.getElementById("hero-tone").value,
     platform_ids: platformIds,
     variants: parseInt(document.getElementById("hero-variants").value, 10),
