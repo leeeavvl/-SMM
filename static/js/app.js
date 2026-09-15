@@ -169,22 +169,24 @@ async function fillHeroPlanFields() {
   }
   const opts = state.planOptions;
 
+  // На случай устаревшей закешированной HTML-страницы без этих полей — не роняем
+  // остальную инициализацию дашборда, если конкретный select отсутствует в DOM.
   const directionSelect = document.getElementById("hero-direction");
-  if (!directionSelect.dataset.filled) {
+  if (directionSelect && !directionSelect.dataset.filled) {
     directionSelect.innerHTML =
       `<option value="">— (не указано)</option>` + opts.directions.map((d) => `<option value="${d}">${d}</option>`).join("");
     directionSelect.dataset.filled = "1";
   }
 
   const contentTypeSelect = document.getElementById("hero-content-type");
-  if (!contentTypeSelect.dataset.filled) {
+  if (contentTypeSelect && !contentTypeSelect.dataset.filled) {
     contentTypeSelect.innerHTML =
       `<option value="">— (не указано)</option>` + opts.content_types.map((c) => `<option value="${c}">${c}</option>`).join("");
     contentTypeSelect.dataset.filled = "1";
   }
 
   const formatSelect = document.getElementById("hero-format");
-  if (!formatSelect.dataset.filled) {
+  if (formatSelect && !formatSelect.dataset.filled) {
     const allFormats = [...new Set(Object.values(opts.formats_by_content_type).flat())];
     formatSelect.innerHTML =
       `<option value="">— (ИИ подберёт сам)</option>` + allFormats.map((f) => `<option value="${f}">${f}</option>`).join("");
@@ -1444,9 +1446,12 @@ document.getElementById("hero-generate-btn").addEventListener("click", async () 
     return;
   }
   const lengthValue = document.getElementById("hero-length").value.trim();
-  const direction = document.getElementById("hero-direction").value;
-  const contentType = document.getElementById("hero-content-type").value;
-  const format = document.getElementById("hero-format").value;
+  // Через optional chaining — на случай, если в браузере закешировалась старая версия
+  // страницы без этих полей (тогда getElementById вернёт null, а .value на null уронил
+  // бы весь обработчик клика без единой подсказки пользователю).
+  const direction = document.getElementById("hero-direction")?.value || "";
+  const contentType = document.getElementById("hero-content-type")?.value || "";
+  const format = document.getElementById("hero-format")?.value || "";
   const structuredBits = [];
   if (direction) structuredBits.push(`Направление/рубрика: ${direction}.`);
   if (contentType) structuredBits.push(`Тип контента: ${contentType}.`);
