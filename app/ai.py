@@ -692,6 +692,7 @@ def _generate_and_parse_variants(
                 body = _strip_meta_labels(body)
                 body = _strip_markdown_formatting(body)
                 body = _strip_hashtags(body)
+                body = _strip_trailing_tip_block(body)
                 # Сначала чиним хук и фактические ошибки про бренд (эти правки переписывают
                 # текст целиком и могут случайно ужать его), и только потом добиваем длину —
                 # чтобы финальный шаг проверки объёма был последним и решающим.
@@ -909,6 +910,25 @@ def _strip_hashtags(text: str) -> str:
     cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
+
+
+# По прямой просьбе пользователя: приклеенный блок «Совет:»/«Рекомендация:»/«Лайфхак:»
+# В КОНЦЕ поста неуместен вообще, даже если содержит реальный совет по теме — не только
+# когда он банален. В отличие от служебных меток («Призыв к действию:») тут убираем не
+# только ярлык, а весь последний абзац целиком.
+_TRAILING_TIP_RE = re.compile(
+    r"^[^\w\n]{0,10}(?:[а-яёa-z]{2,20}\s+){0,2}(совет\w*|рекомендаци\w*|лайфхак\w*)[^\n:]{0,15}:",
+    re.IGNORECASE,
+)
+
+
+def _strip_trailing_tip_block(text: str) -> str:
+    if not text:
+        return text
+    paragraphs = text.split("\n\n")
+    while paragraphs and _TRAILING_TIP_RE.match(paragraphs[-1].strip()):
+        paragraphs.pop()
+    return "\n\n".join(paragraphs).strip()
 
 
 def _ensure_no_banned_hook(body: str, provider: str | None, max_rounds: int = 3) -> str:
