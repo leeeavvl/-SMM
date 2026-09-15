@@ -968,18 +968,25 @@ def _rewrite_imagine_scenario(body: str, provider: str | None) -> str:
     return body
 
 
-def _ensure_no_imagine_scenario(body: str, provider: str | None, max_rounds: int = 2) -> str:
+def _ensure_no_imagine_scenario(body: str, provider: str | None, max_rounds: int = 3) -> str:
     current = body
     for _ in range(max_rounds):
         if not _has_imagine_scenario_anywhere(current):
             break
-        try:
-            candidate = _rewrite_imagine_scenario(current, provider)
-        except Exception:
+        new_current = current
+        # Как и с остальными правками: GigaChat не всегда с первого раза отдаёт валидный
+        # JSON на этот запрос — даём несколько попыток в рамках раунда, а не сдаёмся сразу.
+        for _attempt in range(3):
+            try:
+                candidate = _rewrite_imagine_scenario(current, provider)
+            except Exception:
+                continue
+            if candidate != current and not _has_imagine_scenario_anywhere(candidate):
+                new_current = candidate
+                break
+        if new_current == current:
             break
-        if candidate == current or _has_imagine_scenario_anywhere(candidate):
-            break
-        current = candidate
+        current = new_current
     return current
 
 
