@@ -676,7 +676,12 @@ def _generate_text(system_prompt: str, user_prompt: str, provider: str | None = 
 
 
 def _generate_and_parse_variants(
-    system_prompt: str, user_prompt: str, provider: str | None, attempts: int = 3, length: int | None = None
+    system_prompt: str,
+    user_prompt: str,
+    provider: str | None,
+    attempts: int = 3,
+    length: int | None = None,
+    require_slides: bool = False,
 ) -> list[dict]:
     """Некоторые провайдеры (GigaChat, локальные модели через Ollama) не так
     строго следуют инструкции «верни только JSON», как Claude/GPT/Gemini, и
@@ -699,6 +704,8 @@ def _generate_and_parse_variants(
                 body = _ensure_no_banned_hook(body, provider)
                 body = _ensure_no_imagine_scenario(body, provider)
                 body = _ensure_no_forbidden_event_terms(body, provider)
+                if require_slides:
+                    body = _ensure_slide_structure(body, provider)
                 if length:
                     body = _ensure_length(body, length, provider)
                 v["body"] = body
@@ -1115,6 +1122,78 @@ def _ensure_no_imagine_scenario(body: str, provider: str | None, max_rounds: int
     return current
 
 
+# Для платформ, чьё ТЗ явно описывает карусельный/карточный формат (Instagram и т.п.),
+# промпт-инструкции («воспроизведи структуру с метками «Слайд N:») недостаточно —
+# GigaChat нередко присылает обычный список/абзацы без явных меток слайдов, из-за чего
+# пост невозможно быстро разнести по отдельным карточкам дизайна. Проверяем результат
+# программно и, если меток нет, отдельно просим модель переразметить готовый текст.
+_SLIDE_MARKER_RE = re.compile(r"(?:^|\n)\s*(слайд|карточк\w*)\s*\d+", re.IGNORECASE)
+
+
+def _brief_requires_slides(brief_text: str) -> bool:
+    return bool(re.search(r"карусел|\bслайд|карточ", brief_text or "", re.IGNORECASE))
+
+
+def _has_slide_structure(body: str) -> bool:
+    # Одно случайное упоминание слова «слайд» в тексте не считается разметкой —
+    # для реальной карусели нужно минимум 2 промаркированные карточки.
+    return len(_SLIDE_MARKER_RE.findall(body or "")) >= 2
+
+
+def _rewrite_into_slides(body: str, provider: str | None) -> str:
+    system_prompt = (
+        "Ты — опытный SMM-редактор. Переразмечаешь уже готовый текст поста под формат "
+        "карусели, не меняя смысл и почти не меняя объём. Отвечаешь ТОЛЬКО валидным JSON "
+        "без markdown-обёртки.\n\n" + RUSSIAN_DESLOP_RULES
+    )
+    user_prompt = f"""Вот готовый текст поста для карусели (Instagram и т.п.), но в нём НЕТ
+явных меток слайдов — это просто сплошной текст или нумерованный список без разметки.
+
+---
+{body}
+---
+
+Разбей этот текст на слайды карусели и промаркируй каждый явной меткой на отдельной
+строке: «Слайд 1 (обложка): ...», «Слайд 2: ...», «Слайд 3: ...» и т.д., с пустой строкой
+между слайдами. НЕ добавляй новый контент и не сокращай — используй ту же мысль/структуру,
+что уже есть в тексте (если там уже есть нумерованный список из пунктов — каждый пункт
+становится отдельным слайдом). Последний слайд — с призывом к действию, если он уже есть в
+тексте. Если в конце текста есть отдельная короткая подпись поста (не относящаяся к
+конкретному слайду) — оставь её последним абзацем БЕЗ метки «Слайд».
+
+Верни JSON-объект с одним полем:
+- "body": весь пост целиком, с явной разметкой по слайдам
+
+Верни только JSON-объект, ничего больше."""
+    text = _generate_text(system_prompt, user_prompt, provider)
+    new_body = _extract_text_field(text, "body")
+    if new_body and not _looks_malformed(new_body) and len(new_body) >= len(body) * 0.85:
+        return new_body
+    return body
+
+
+def _ensure_slide_structure(body: str, provider: str | None, max_rounds: int = 2) -> str:
+    current = body
+    for _ in range(max_rounds):
+        if _has_slide_structure(current):
+            break
+        new_current = current
+        for _attempt in range(2):
+            try:
+                candidate = _rewrite_into_slides(current, provider)
+            except Exception:
+                continue
+            if candidate != current and _has_slide_structure(candidate) and not _looks_malformed(candidate):
+                new_current = candidate
+                break
+        if new_current == current:
+            # Не удалось переразметить через ИИ — оставляем исходный текст без меток,
+            # это лучше, чем показать пользователю обрывок JSON.
+            break
+        current = new_current
+    return current
+
+
 def _ensure_length(body: str, target_length: int, provider: str | None, max_rounds: int = 3) -> str:
     """Некоторые модели (особенно GigaChat) сильно недооценивают заданную длину текста в
     инструкции промпта. Вместо того чтобы полагаться только на просьбу в промпте, после
@@ -1162,8 +1241,11 @@ def generate_posts(
             continue
         platform = _get_platform_context(platform_id)
         system_prompt, user_prompt = _build_prompts_for_platform(topic, brief, tone, platform, variants, length)
+        require_slides = _brief_requires_slides(platform["brief"])
         try:
-            for item in _generate_and_parse_variants(system_prompt, user_prompt, provider, length=length):
+            for item in _generate_and_parse_variants(
+                system_prompt, user_prompt, provider, length=length, require_slides=require_slides
+            ):
                 item["platform_id"] = platform_id
                 item["platform_name"] = platform["name"]
                 results.append(item)
