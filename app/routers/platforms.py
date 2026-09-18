@@ -5,6 +5,7 @@ import shutil
 from io import BytesIO
 
 import fitz  # PyMuPDF
+import httpx
 import pytesseract
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from PIL import Image
@@ -78,6 +79,87 @@ def list_platforms():
         cur.execute("SELECT * FROM platforms")
         rows = cur.fetchall()
     return [_serialize(r) for r in rows]
+
+
+@router.post("/{platform_id}/test")
+def test_platform_connection(platform_id: str):
+    """Диагностическая проверка без отправки реального поста — только валидирует
+    сохранённые учётные данные через безобидные read-only методы API площадки.
+
+    Сделана в ответ на жалобу «не публикуются посты» — раньше единственным способом
+    узнать причину было прочитать error в /api/publish/queue ПОСЛЕ неудачной попытки
+    реальной публикации; эта проверка не трогает публикации и ничего не отправляет
+    в канал/группу.
+    """
+    if platform_id not in PLATFORM_MAP:
+        raise HTTPException(404, "Неизвестная платформа")
+    with db_cursor() as cur:
+        cur.execute("SELECT connected, credentials FROM platforms WHERE id = ?", (platform_id,))
+        row = cur.fetchone()
+    credentials = load_json(row["credentials"]) if row and row["connected"] else {}
+    if not credentials:
+        return {"ok": False, "error": "Платформа не подключена (нет сохранённых учётных данных)"}
+
+    if platform_id == "telegram":
+        bot_token = credentials.get("bot_token")
+        chat_id = credentials.get("chat_id")
+        if not bot_token or not chat_id:
+            return {"ok": False, "error": "Не заданы bot_token или chat_id"}
+        try:
+            me_resp = httpx.get(f"https://api.telegram.org/bot{bot_token}/getMe", timeout=15)
+            me_data = me_resp.json()
+        except httpx.HTTPError as exc:
+            return {"ok": False, "error": f"Ошибка сети при обращении к Telegram: {exc}"}
+        if not me_data.get("ok"):
+            return {
+                "ok": False,
+                "error": f"Токен бота недействителен: {me_data.get('description', 'неизвестная ошибка')}. "
+                "Проверьте bot_token в настройках платформы.",
+            }
+        bot_username = (me_data.get("result") or {}).get("username")
+
+        try:
+            chat_resp = httpx.get(
+                f"https://api.telegram.org/bot{bot_token}/getChat", params={"chat_id": chat_id}, timeout=15
+            )
+            chat_data = chat_resp.json()
+        except httpx.HTTPError as exc:
+            return {"ok": False, "error": f"Ошибка сети при обращении к Telegram: {exc}"}
+        if not chat_data.get("ok"):
+            return {
+                "ok": False,
+                "error": f"Бот @{bot_username} не может найти канал/чат «{chat_id}»: "
+                f"{chat_data.get('description', 'неизвестная ошибка')}. Проверьте chat_id (для канала "
+                "обычно нужен формат -100XXXXXXXXXX или @username канала) и что бот добавлен в канал.",
+            }
+        chat_title = (chat_data.get("result") or {}).get("title") or (chat_data.get("result") or {}).get("username")
+
+        try:
+            admins_resp = httpx.get(
+                f"https://api.telegram.org/bot{bot_token}/getChatAdministrators",
+                params={"chat_id": chat_id},
+                timeout=15,
+            )
+            admins_data = admins_resp.json()
+        except httpx.HTTPError:
+            admins_data = {"ok": False}
+        is_admin = False
+        if admins_data.get("ok"):
+            is_admin = any(
+                (a.get("user") or {}).get("username") == bot_username for a in admins_data.get("result", [])
+            )
+
+        if not is_admin:
+            return {
+                "ok": False,
+                "error": f"Бот @{bot_username} подключён и видит канал «{chat_title}», но НЕ является "
+                "администратором этого канала/чата — Telegram не позволит ему публиковать сообщения. "
+                "Добавьте бота в администраторы канала.",
+            }
+
+        return {"ok": True, "message": f"Всё в порядке: бот @{bot_username} — администратор канала «{chat_title}»."}
+
+    return {"ok": False, "error": "Диагностика для этой платформы пока не реализована"}
 
 
 @router.post("/{platform_id}/connect")
