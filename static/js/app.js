@@ -626,11 +626,6 @@ function renderPreview() {
     mediaBox.innerHTML = "";
   }
 
-  const tags = document.getElementById("content-tags").value.trim();
-  document.getElementById("ppc-tags").textContent = tags
-    ? tags.split(",").map((t) => `#${t.trim()}`).filter((t) => t !== "#").join("  ")
-    : "";
-
   const platformsBox = document.getElementById("preview-platforms");
   const checked = Array.from(document.querySelectorAll("#content-platform-checks input:checked"));
   platformsBox.innerHTML = checked.length
@@ -687,12 +682,11 @@ async function openContentModal(id, prefill) {
     document.getElementById("content-title").value = c.title;
     document.getElementById("content-body").value = c.body;
     document.getElementById("content-media").value = c.media_url || "";
-    document.getElementById("content-tags").value = c.tags || "";
     setMediaPreview(c.media_url || "");
     lastLoadedContentPlatforms = c.platforms || [];
   } else {
     document.getElementById("content-modal-title").textContent = "Новый пост";
-    ["content-title", "content-body", "content-media", "content-tags"].forEach((f) => (document.getElementById(f).value = ""));
+    ["content-title", "content-body", "content-media"].forEach((f) => (document.getElementById(f).value = ""));
     setMediaPreview("");
     lastLoadedContentPlatforms = [];
     if (prefill?.topic) document.getElementById("content-title").value = prefill.topic;
@@ -747,7 +741,7 @@ document.getElementById("content-body").addEventListener("input", updateCharCoun
 function refreshPreviewIfVisible() {
   if (!document.getElementById("content-preview").hidden) renderPreview();
 }
-["content-title", "content-body", "content-media", "content-tags"].forEach((id) =>
+["content-title", "content-body", "content-media"].forEach((id) =>
   document.getElementById(id).addEventListener("input", refreshPreviewIfVisible)
 );
 document.getElementById("content-platform-checks").addEventListener("change", () => {
@@ -802,9 +796,6 @@ document.getElementById("btn-ai-write-body").addEventListener("click", async () 
     if (!data.variants.length) throw new Error("Модель не вернула текст");
     const variant = data.variants[0];
     document.getElementById("content-body").value = variant.body;
-    if (!document.getElementById("content-tags").value.trim() && variant.tags) {
-      document.getElementById("content-tags").value = variant.tags;
-    }
     updateCharCounter();
     refreshPreviewIfVisible();
     toast("Текст готов — можно отредактировать перед сохранением");
@@ -916,7 +907,6 @@ function collectPostPayload() {
     title,
     body: document.getElementById("content-body").value,
     media_url: document.getElementById("content-media").value || null,
-    tags: document.getElementById("content-tags").value,
   };
 }
 
@@ -1506,14 +1496,12 @@ function renderAIVariants(variants) {
       wrapper.innerHTML = `
         <div class="avtitle">${escapeHtml(v.title)}</div>
         <div class="avbody">${escapeHtml(v.body)}</div>
-        ${v.tags ? `<div class="avtags">#${escapeHtml(v.tags).replaceAll(", ", " #")}</div>` : ""}
         <button class="btn small primary">Использовать этот вариант</button>
       `;
       wrapper.querySelector("button").addEventListener("click", () => {
         openContentModal(null);
         document.getElementById("content-title").value = v.title;
         document.getElementById("content-body").value = v.body;
-        document.getElementById("content-tags").value = v.tags;
       });
       results.appendChild(wrapper);
     });
