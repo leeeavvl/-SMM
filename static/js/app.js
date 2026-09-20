@@ -2423,6 +2423,14 @@ document.getElementById("btn-fetch-canva-design").addEventListener("click", asyn
   }
 });
 
+document.getElementById("btn-open-claude-canva").addEventListener("click", () => {
+  // Открыть именно ТЕКУЩУЮ переписку с Claude технически невозможно — у сессий Claude Code
+  // нет публичной ссылки для повторного входа. Открываем общий чат claude.ai: там можно
+  // попросить Claude сгенерировать дизайн в Canva тем же способом, если Canva подключена
+  // в настройках самого claude.ai (Settings → Connectors → Canva).
+  window.open("https://claude.ai/new", "_blank");
+});
+
 // Обработка возврата из OAuth Canva (редирект с ?canva_connected=1 / ?canva_error=...)
 (function handleCanvaOAuthReturn() {
   const params = new URLSearchParams(window.location.search);
