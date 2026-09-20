@@ -417,6 +417,15 @@ def _extract_json_object(text: str) -> dict:
     return data
 
 
+def tone_from_content_type(content_type: str) -> str:
+    """Тон коммуникации теперь всегда выводится из типа контента, а не выбирается
+    отдельно — раньше это были два независимых поля, которые могли противоречить
+    друг другу (например тип «Продающий», но тон «дружелюбный»). Единственный тип
+    контента, требующий явно продающего тона — «Продающий»; для любого другого тон
+    нейтральный (остальные стилистические нюансы задаются самим ТЗ платформы)."""
+    return "продающий" if (content_type or "").strip().lower() == "продающий" else "нейтральный"
+
+
 def _get_platform_context(platform_id: str) -> dict:
     with db_cursor() as cur:
         cur.execute("SELECT brief, channel_url FROM platforms WHERE id = ?", (platform_id,))
@@ -1423,7 +1432,6 @@ def generate_plan(
     platform_id: str,
     rows: list[dict],
     period_days: int,
-    tone: str,
 ) -> tuple[list[dict], list[str]]:
     """rows: [{"direction","content_type","format","quantity"}, ...]
 
@@ -1486,8 +1494,9 @@ def generate_plan(
         for row in day_plan[day_offset]:
             combo_key = (row["direction"], row["content_type"], row["format"])
             used_topics = used_topics_by_combo.setdefault(combo_key, [])
+            row_tone = tone_from_content_type(row["content_type"])
             user_prompt = _plan_row_prompt(
-                tone, platform, brief_block, row["direction"], row["content_type"], row["format"],
+                row_tone, platform, brief_block, row["direction"], row["content_type"], row["format"],
                 used_topics, all_topics,
             )
             # До 3 попыток: небольшие локальные модели иногда возвращают "рамблинг"

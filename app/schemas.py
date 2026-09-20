@@ -90,7 +90,6 @@ class PlanGenerateRequest(BaseModel):
     rows: list[PlanRowSpec] = Field(min_length=1)
     start_date: str = Field(min_length=1)  # YYYY-MM-DD
     end_date: str = Field(min_length=1)  # YYYY-MM-DD
-    tone: str = "нейтральный"
 
 
 class PlanWriteRequest(BaseModel):

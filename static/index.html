@@ -53,16 +53,6 @@
               <input type="text" id="hero-topic" placeholder="Например: запуск новой коллекции кроссовок">
             </div>
             <div class="ai-col ai-col-narrow">
-              <label>Тон</label>
-              <select id="hero-tone">
-                <option value="нейтральный">Нейтральный</option>
-                <option value="продающий">Продающий</option>
-                <option value="экспертный">Экспертный</option>
-                <option value="дружелюбный">Дружелюбный / неформальный</option>
-                <option value="официальный">Официально-деловой</option>
-              </select>
-            </div>
-            <div class="ai-col ai-col-narrow">
               <label>Сколько постов на каждую соцсеть</label>
               <select id="hero-variants">
                 <option value="1">1</option>
@@ -78,7 +68,7 @@
               <select id="hero-direction"></select>
             </div>
             <div class="ai-col ai-col-narrow">
-              <label>Контент</label>
+              <label>Тип контента</label>
               <select id="hero-content-type"></select>
             </div>
             <div class="ai-col ai-col-narrow">
@@ -86,6 +76,7 @@
               <select id="hero-format"></select>
             </div>
           </div>
+          <p class="hint">Тон поста определяется типом контента: «Продающий» — продающий тон, любой другой — нейтральный.</p>
 
           <div class="ai-row">
             <div class="ai-col ai-col-narrow">
@@ -224,17 +215,8 @@
             <label>по</label>
             <input type="date" id="plan-end-date">
           </div>
-          <div class="ai-col ai-col-narrow">
-            <label>Тон</label>
-            <select id="plan-tone">
-              <option value="нейтральный">Нейтральный</option>
-              <option value="продающий">Продающий</option>
-              <option value="экспертный">Экспертный</option>
-              <option value="дружелюбный">Дружелюбный / неформальный</option>
-              <option value="официальный">Официально-деловой</option>
-            </select>
-          </div>
         </div>
+        <p class="hint">Тон каждого поста определяется его типом контента (колонка «Контент» в таблице выше): «Продающий» — продающий тон, любой другой — нейтральный.</p>
         <p class="hint" id="plan-period-hint"></p>
         <div class="ai-generate-row">
           <button class="btn primary" id="btn-generate-plan">📅 Сгенерировать план</button>

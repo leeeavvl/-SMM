@@ -5,7 +5,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException
 
-from app.ai import AIConfigError, AIGenerationError, generate_plan, generate_posts
+from app.ai import AIConfigError, AIGenerationError, generate_plan, generate_posts, tone_from_content_type
 from app.database import db_cursor, get_setting, row_to_dict
 from app.google_sheets import SheetsConfigError, SheetsSyncError, append_plan_items, update_cell_text
 from app.plan_options import get_options
@@ -72,7 +72,6 @@ def generate(payload: PlanGenerateRequest):
             platform_id=payload.platform_id,
             rows=[r.model_dump() for r in payload.rows],
             period_days=period_days,
-            tone=payload.tone,
         )
     except AIConfigError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -134,10 +133,10 @@ def write_post(plan_id: int, payload: PlanWriteRequest):
         f"Тип контента: {plan_item['content_type']}. "
         f"Формат публикации: {plan_item['format']}."
     )
-    # Тон в пункте плана отдельно не хранится — но если тип контента "Продающий",
-    # пост должен писаться с продающим тоном (иначе он получится рекламным по типу
-    # контента, но с инструкцией избегать рекламных призывов — противоречие).
-    plan_tone = "продающий" if (plan_item["content_type"] or "").strip().lower() == "продающий" else "нейтральный"
+    # Тон всегда выводится из типа контента (см. tone_from_content_type) — отдельного
+    # поля "тон" в плане больше нет, чтобы не было противоречий вида "тип Продающий,
+    # но тон дружелюбный".
+    plan_tone = tone_from_content_type(plan_item["content_type"])
     try:
         variants, errors = generate_posts(
             topic=plan_item["topic"],

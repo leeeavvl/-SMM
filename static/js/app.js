@@ -1448,10 +1448,13 @@ document.getElementById("hero-generate-btn").addEventListener("click", async () 
   if (format) structuredBits.push(`Формат публикации: ${format}.`);
   const userBrief = document.getElementById("hero-brief").value.trim();
   const brief = [structuredBits.join(" "), userBrief].filter(Boolean).join("\n");
+  // Тон больше не выбирается отдельно — определяется типом контента: "Продающий"
+  // даёт продающий тон, любой другой тип (или отсутствие выбора) — нейтральный.
+  const tone = contentType.trim().toLowerCase() === "продающий" ? "продающий" : "нейтральный";
   const payload = {
     topic,
     brief,
-    tone: document.getElementById("hero-tone").value,
+    tone,
     platform_ids: platformIds,
     variants: parseInt(document.getElementById("hero-variants").value, 10),
     length: lengthValue ? parseInt(lengthValue, 10) : null,
@@ -1789,12 +1792,13 @@ document.getElementById("btn-generate-plan").addEventListener("click", async () 
     toast("Дата «по» не может быть раньше даты «с»", true);
     return;
   }
+  // Тон отдельно не выбирается — каждая строка плана уже задаёт свой тип контента,
+  // из которого тон и выводится на бэкенде ("Продающий" -> продающий, иначе нейтральный).
   const payload = {
     platform_id: document.getElementById("plan-platform").value,
     rows,
     start_date: startDate,
     end_date: endDate,
-    tone: document.getElementById("plan-tone").value,
   };
   const btn = document.getElementById("btn-generate-plan");
   btn.disabled = true;
