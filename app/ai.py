@@ -1226,8 +1226,9 @@ _FABRICATED_PERSON_RE = re.compile(
     # (?i: ...) — регистронезависимость только для слова-роли (студент/выпускник/...),
     # а не для всего паттерна: имя всё равно должно начинаться с заглавной буквы,
     # иначе сработает на любом обычном существительном после запятой.
-    r"\b(?i:студент\w*|выпускник\w*|выпускниц\w*|резидент\w*|стажёр\w*|стажер\w*|клиент\w*)\s+[А-ЯЁ][а-яё]{2,}\b"
-    r"|\b[А-ЯЁ][а-яё]{2,},\s*(?i:студент\w*|выпускник\w*|выпускниц\w*|резидент\w*|стажёр\w*|стажер\w*|клиент\w*)\b",
+    r"\b(?i:студент\w*|выпускник\w*|выпускниц\w*|резидент\w*|стажёр\w*|стажер\w*|клиент\w*)\s+(?P<name1>[А-ЯЁ][а-яё]{2,})\b"
+    # до двух слов-определений между запятой и словом-ролью: «Алексей, наш вчерашний выпускник, ...»
+    r"|\b(?P<name2>[А-ЯЁ][а-яё]{2,}),\s*(?:[а-яё]+\s+){0,2}(?i:студент\w*|выпускник\w*|выпускниц\w*|резидент\w*|стажёр\w*|стажер\w*|клиент\w*)\b",
     re.UNICODE,
 )
 
@@ -1262,6 +1263,25 @@ def _has_fabricated_person(body: str) -> bool:
         if match.group(1).lower() not in _NAME_STOPWORDS:
             return True
     return False
+
+
+def _extract_fabricated_names(body: str) -> set[str]:
+    """Возвращает конкретные слова-имена, пойманные как выдуманный персонаж — чтобы
+    потом отследить ПОВТОРНЫЕ упоминания того же имени в других абзацах текста, даже
+    там, где само по себе предложение не подходит ни под один из паттернов выше
+    (например «Алексей воспользовался...» — глагол «воспользовался» не в списке
+    глаголов личной истории, но имя Алексей уже засветилось раньше как выдуманное)."""
+    if not body:
+        return set()
+    names: set[str] = set()
+    for m in _FABRICATED_PERSON_RE.finditer(body):
+        name = m.group("name1") or m.group("name2")
+        if name:
+            names.add(name)
+    for m in _NARRATIVE_VERB_RE.finditer(body):
+        if m.group(1).lower() not in _NAME_STOPWORDS:
+            names.add(m.group(1))
+    return names
 
 
 def _rewrite_fabricated_person(body: str, provider: str | None) -> str:
@@ -1300,6 +1320,36 @@ def _rewrite_fabricated_person(body: str, provider: str | None) -> str:
     return body
 
 
+def _strip_fabricated_person_paragraphs(text: str) -> str:
+    """Последний рубеж защиты: если ни один раунд AI-переписывания не убрал
+    выдуманного персонажа (проверено на реальной генерации под давлением
+    промпта «истории успеха» — модель может упорно возвращать фабрикацию все
+    попытки подряд), просто выбрасываем целиком абзацы, где сработал
+    _has_fabricated_person. Результат может звучать чуть менее гладко, чем
+    аккуратная AI-правка, но гарантированно не содержит выдуманного человека —
+    это то, что пользователь явно просил превыше всего остального.
+
+    Заодно вычищаем абзацы, где выдуманное имя упоминается ПОВТОРНО другим глаголом,
+    не входящим в _NARRATIVE_VERB_RE (например «Алексей воспользовался встречей...» —
+    сам по себе этот абзац не матчится ни одним паттерном, но имя «Алексей» уже
+    опознано как выдуманное в другом абзаце этого же текста)."""
+    if not text:
+        return text
+    paragraphs = text.split("\n\n")
+    fabricated_names = set()
+    for p in paragraphs:
+        fabricated_names |= _extract_fabricated_names(p)
+    kept = []
+    for p in paragraphs:
+        if _has_fabricated_person(p):
+            continue
+        if fabricated_names and any(re.search(rf"\b{re.escape(name)}\b", p) for name in fabricated_names):
+            continue
+        kept.append(p)
+    cleaned = "\n\n".join(kept).strip()
+    return cleaned or text
+
+
 def _ensure_no_fabricated_person(body: str, provider: str | None, max_rounds: int = 3) -> str:
     current = body
     for _ in range(max_rounds):
@@ -1317,10 +1367,13 @@ def _ensure_no_fabricated_person(body: str, provider: str | None, max_rounds: in
                 new_current = candidate
                 break
         if new_current == current:
-            # Не удалось убрать через ИИ ни за один раунд — оставляем как есть, это
-            # лучше, чем показать пользователю обрывок JSON.
+            # Не удалось убрать через ИИ ни за один раунд — вместо того чтобы
+            # показать пользователю текст с фабрикацией, вырезаем абзацы с ней
+            # детерминированно (см. _strip_fabricated_person_paragraphs).
             break
         current = new_current
+    if _has_fabricated_person(current):
+        current = _strip_fabricated_person_paragraphs(current)
     return current
 
 
