@@ -716,6 +716,7 @@ def _generate_and_parse_variants(
                 body = _clean_body_artifacts(v.get("body", ""))
                 body = _strip_meta_labels(body)
                 body = _strip_markdown_formatting(body)
+                body = _strip_html_tags(body)
                 body = _strip_hashtags(body)
                 body = _strip_trailing_tip_block(body)
                 # Сначала чиним хук и фактические ошибки про бренд (эти правки переписывают
@@ -922,6 +923,37 @@ def _strip_markdown_formatting(text: str) -> str:
     text = _MARKDOWN_BOLD_RE.sub(r"\1", text)
     text = _MARKDOWN_HEADING_RE.sub("", text)
     return text
+
+
+# Модель иногда (замечено на реальной генерации) отдаёт текст с HTML-разметкой
+# (<p>, <ul><li>, <a href="...">) вместо обычного текста поста — большинство площадок
+# (обычный Telegram-пост без parse_mode=HTML, VK, Instagram-подписи) покажут эти теги
+# буквально, читатель увидит мусорные <p> прямо в тексте. Промпт этого не просит,
+# но раз случается — чистим детерминированно, превращая разметку в обычные переносы
+# строк/буллеты вместо простого выпиливания тегов (иначе абзацы слипнутся в один).
+_HTML_A_RE = re.compile(r"<a\b[^>]*>(.*?)</a>", re.IGNORECASE | re.DOTALL)
+_HTML_LI_RE = re.compile(r"<li[^>]*>(.*?)</li>", re.IGNORECASE | re.DOTALL)
+_HTML_BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_HTML_BLOCK_CLOSE_RE = re.compile(r"</(p|div|ul|ol)\s*>", re.IGNORECASE)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_HTML_ENTITIES = {
+    "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'",
+}
+
+
+def _strip_html_tags(text: str) -> str:
+    if not text or "<" not in text:
+        return text
+    cleaned = _HTML_A_RE.sub(r"\1", text)  # ссылка -> просто видимый текст, без href
+    cleaned = _HTML_LI_RE.sub(r"• \1\n", cleaned)  # пункт списка -> буллет с новой строки
+    cleaned = _HTML_BR_RE.sub("\n", cleaned)
+    cleaned = _HTML_BLOCK_CLOSE_RE.sub("\n\n", cleaned)  # закрывающий блочный тег -> абзац
+    cleaned = _HTML_TAG_RE.sub("", cleaned)  # остальные теги (<p>, <ul>, <strong> и т.д.) — просто убрать
+    for entity, replacement in _HTML_ENTITIES.items():
+        cleaned = cleaned.replace(entity, replacement)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
 
 
 # Пользователь расставляет хештеги сам — они не должны попадать в текст поста вообще
