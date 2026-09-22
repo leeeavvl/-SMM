@@ -50,6 +50,8 @@ class SettingsUpdate(BaseModel):
     gemini_model: Optional[str] = None
     gigachat_auth_key: Optional[str] = None
     gigachat_model: Optional[str] = None
+    deepseek_api_key: Optional[str] = None
+    deepseek_model: Optional[str] = None
     ai_provider: Optional[str] = None
     ollama_model: Optional[str] = None
     ollama_base_url: Optional[str] = None

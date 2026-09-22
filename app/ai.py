@@ -1,11 +1,13 @@
 """Генерация постов по теме и техническому заданию.
 
-Поддерживает пять провайдеров:
+Поддерживает шесть провайдеров:
 - anthropic — Claude API (платно, нужен ключ);
 - openai — ChatGPT / OpenAI API (платно, нужен ключ; недоступен из РФ);
 - gemini — Google Gemini API (бесплатный уровень; недоступен из РФ);
 - gigachat — GigaChat API от Сбера (доступен из РФ, есть бесплатный лимит
   токенов для физлиц-разработчиков);
+- deepseek — DeepSeek API (китайский провайдер, платно но недорого, доступен
+  из РФ — не подпадает под западные санкционные ограничения);
 - ollama — локальная модель через Ollama (бесплатно, работает на компьютере пользователя).
 
 Если выбрано несколько платформ, для каждой из них делается отдельный запрос к модели,
@@ -34,11 +36,13 @@ ANTHROPIC_MODEL = "claude-sonnet-5"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
 DEFAULT_GIGACHAT_MODEL = "GigaChat"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-chat"
 DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
 GIGACHAT_OAUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
 GIGACHAT_API_BASE = "https://gigachat.devices.sberbank.ru/api/v1"
+DEEPSEEK_API_BASE = "https://api.deepseek.com"
 
 
 class AIConfigError(RuntimeError):
@@ -238,6 +242,10 @@ def get_gigachat_model() -> str:
     return get_setting("gigachat_model") or DEFAULT_GIGACHAT_MODEL
 
 
+def get_deepseek_model() -> str:
+    return get_setting("deepseek_model") or DEFAULT_DEEPSEEK_MODEL
+
+
 def get_ollama_model() -> str:
     return get_setting("ollama_model") or DEFAULT_OLLAMA_MODEL
 
@@ -283,6 +291,16 @@ def _get_gigachat_auth_key() -> str:
             "Authorization key GigaChat не настроен. Получите его на developers.sber.ru "
             "(создать проект → GigaChat API → получить Authorization key) и добавьте "
             "в разделе «Настройки»."
+        )
+    return key
+
+
+def _get_deepseek_api_key() -> str:
+    key = get_setting("deepseek_api_key") or os.environ.get("DEEPSEEK_API_KEY")
+    if not key:
+        raise AIConfigError(
+            "API-ключ DeepSeek не настроен. Получите его на platform.deepseek.com "
+            "(раздел API keys) и добавьте в разделе «Настройки»."
         )
     return key
 
@@ -613,6 +631,34 @@ def _generate_openai(system_prompt: str, user_prompt: str) -> str:
     return response.choices[0].message.content or ""
 
 
+def _generate_deepseek(system_prompt: str, user_prompt: str) -> str:
+    # DeepSeek API OpenAI-совместим — переиспользуем клиент openai с другим base_url,
+    # отдельная библиотека не нужна.
+    client = openai.OpenAI(api_key=_get_deepseek_api_key(), base_url=DEEPSEEK_API_BASE)
+    model = get_deepseek_model()
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except openai.AuthenticationError as exc:
+        raise AIConfigError(
+            "API-ключ DeepSeek недействителен. Проверьте его в разделе «Настройки»."
+        ) from exc
+    except openai.NotFoundError as exc:
+        raise AIConfigError(
+            f"Модель «{model}» недоступна в DeepSeek. Укажите другую модель в «Настройках» "
+            "(например deepseek-chat или deepseek-reasoner)."
+        ) from exc
+    except openai.APIError as exc:
+        raise AIGenerationError(f"Ошибка обращения к DeepSeek API: {exc}") from exc
+
+    return response.choices[0].message.content or ""
+
+
 def _generate_gemini(system_prompt: str, user_prompt: str) -> str:
     client = genai.Client(api_key=_get_gemini_api_key())
     model_name = get_gemini_model()
@@ -679,7 +725,7 @@ def _generate_ollama(system_prompt: str, user_prompt: str) -> str:
     return (data.get("message") or {}).get("content", "")
 
 
-VALID_PROVIDERS = {"anthropic", "openai", "gemini", "gigachat", "ollama"}
+VALID_PROVIDERS = {"anthropic", "openai", "gemini", "gigachat", "deepseek", "ollama"}
 
 
 def _generate_text(system_prompt: str, user_prompt: str, provider: str | None = None) -> str:
@@ -692,6 +738,8 @@ def _generate_text(system_prompt: str, user_prompt: str, provider: str | None = 
         return _generate_gemini(system_prompt, user_prompt)
     if provider == "gigachat":
         return _generate_gigachat(system_prompt, user_prompt)
+    if provider == "deepseek":
+        return _generate_deepseek(system_prompt, user_prompt)
     return _generate_anthropic(system_prompt, user_prompt)
 
 

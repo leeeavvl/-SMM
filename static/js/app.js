@@ -1232,6 +1232,7 @@ function toggleProviderBlocks(provider) {
   document.getElementById("settings-openai-block").style.display = provider === "openai" ? "" : "none";
   document.getElementById("settings-gemini-block").style.display = provider === "gemini" ? "" : "none";
   document.getElementById("settings-gigachat-block").style.display = provider === "gigachat" ? "" : "none";
+  document.getElementById("settings-deepseek-block").style.display = provider === "deepseek" ? "" : "none";
   document.getElementById("settings-ollama-block").style.display = provider === "ollama" ? "" : "none";
 }
 
@@ -1266,6 +1267,13 @@ async function loadSettings() {
     : "Ключ ещё не задан — генерация через GigaChat недоступна.";
   document.getElementById("settings-gigachat-auth-key").value = "";
   document.getElementById("settings-gigachat-model").value = s.gigachat_model;
+
+  const deepseekStatus = document.getElementById("settings-deepseek-status");
+  deepseekStatus.textContent = s.deepseek_api_key_set
+    ? "Ключ сохранён и активен."
+    : "Ключ ещё не задан — генерация через DeepSeek недоступна.";
+  document.getElementById("settings-deepseek-api-key").value = "";
+  document.getElementById("settings-deepseek-model").value = s.deepseek_model;
 
   document.getElementById("settings-ollama-url").value = s.ollama_base_url;
   document.getElementById("settings-ollama-model").value = s.ollama_model;
@@ -1409,6 +1417,10 @@ document.getElementById("btn-save-settings").addEventListener("click", async () 
     const key = document.getElementById("settings-gigachat-auth-key").value.trim();
     if (key) payload.gigachat_auth_key = key;
     payload.gigachat_model = document.getElementById("settings-gigachat-model").value.trim() || "GigaChat";
+  } else if (provider === "deepseek") {
+    const key = document.getElementById("settings-deepseek-api-key").value.trim();
+    if (key) payload.deepseek_api_key = key;
+    payload.deepseek_model = document.getElementById("settings-deepseek-model").value.trim() || "deepseek-chat";
   } else {
     payload.ollama_base_url = document.getElementById("settings-ollama-url").value.trim() || "http://localhost:11434";
     payload.ollama_model = document.getElementById("settings-ollama-model").value.trim() || "qwen2.5:7b";

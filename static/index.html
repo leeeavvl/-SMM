@@ -91,6 +91,7 @@
                 <option value="openai">ChatGPT (OpenAI)</option>
                 <option value="gemini">Google Gemini (бесплатно)</option>
                 <option value="gigachat">GigaChat (Сбер, РФ)</option>
+                <option value="deepseek">DeepSeek (РФ)</option>
                 <option value="ollama">Ollama (локально)</option>
               </select>
             </div>
@@ -304,13 +305,14 @@
 
       <div class="settings-block" style="margin-top:16px;">
         <h2>Источник ИИ-генерации постов</h2>
-        <p class="hint">Выберите, чем генерировать посты: платным облачным Claude, платным ChatGPT (OpenAI), Google Gemini, GigaChat (Сбер — доступен из РФ) или бесплатной локальной моделью через Ollama.</p>
+        <p class="hint">Выберите, чем генерировать посты: платным облачным Claude, платным ChatGPT (OpenAI), Google Gemini, GigaChat (Сбер — доступен из РФ), DeepSeek (доступен из РФ) или бесплатной локальной моделью через Ollama.</p>
         <label>Провайдер</label>
         <select id="settings-provider">
           <option value="anthropic">Claude (Anthropic API, платно)</option>
           <option value="openai">ChatGPT (OpenAI API, платно, недоступен из РФ)</option>
           <option value="gemini">Google Gemini (бесплатный уровень, недоступен из РФ)</option>
           <option value="gigachat">GigaChat (Сбер, доступен из РФ)</option>
+          <option value="deepseek">DeepSeek (платно, доступен из РФ)</option>
           <option value="ollama">Ollama — локальная модель (бесплатно)</option>
         </select>
 
@@ -344,6 +346,15 @@
           <label>Модель</label>
           <input type="text" id="settings-gigachat-model" placeholder="GigaChat">
           <div id="settings-gigachat-status" class="hint"></div>
+        </div>
+
+        <div id="settings-deepseek-block">
+          <label>API-ключ DeepSeek</label>
+          <input type="password" id="settings-deepseek-api-key" placeholder="sk-...">
+          <p class="hint">Получите на <strong>platform.deepseek.com</strong> → API keys → Create new API key. Платный провайдер (по токенам, недорого), доступен из РФ.</p>
+          <label>Модель</label>
+          <input type="text" id="settings-deepseek-model" placeholder="deepseek-chat">
+          <div id="settings-deepseek-status" class="hint"></div>
         </div>
 
         <div id="settings-ollama-block">
@@ -445,6 +456,7 @@
         <option value="openai">ChatGPT (OpenAI)</option>
         <option value="gemini">Google Gemini (бесплатно)</option>
         <option value="gigachat">GigaChat (Сбер, РФ)</option>
+        <option value="deepseek">DeepSeek (РФ)</option>
         <option value="ollama">Ollama (локально)</option>
       </select>
       <button class="modal-close" id="btn-close-assistant-tool" type="button" aria-label="Закрыть">×</button>

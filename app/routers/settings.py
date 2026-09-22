@@ -8,11 +8,13 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app import brandbook
 from app.ai import (
+    DEFAULT_DEEPSEEK_MODEL,
     DEFAULT_GEMINI_MODEL,
     DEFAULT_GIGACHAT_MODEL,
     DEFAULT_OLLAMA_MODEL,
     DEFAULT_OLLAMA_URL,
     DEFAULT_OPENAI_MODEL,
+    get_deepseek_model,
     get_gemini_model,
     get_gigachat_model,
     get_ollama_base_url,
@@ -32,6 +34,7 @@ def _current_settings() -> dict:
     has_openai_key = bool(get_setting("openai_api_key") or os.environ.get("OPENAI_API_KEY"))
     has_gemini_key = bool(get_setting("gemini_api_key") or os.environ.get("GEMINI_API_KEY"))
     has_gigachat_key = bool(get_setting("gigachat_auth_key") or os.environ.get("GIGACHAT_AUTH_KEY"))
+    has_deepseek_key = bool(get_setting("deepseek_api_key") or os.environ.get("DEEPSEEK_API_KEY"))
     return {
         "anthropic_api_key_set": has_key,
         "openai_api_key_set": has_openai_key,
@@ -40,6 +43,8 @@ def _current_settings() -> dict:
         "gemini_model": get_gemini_model(),
         "gigachat_auth_key_set": has_gigachat_key,
         "gigachat_model": get_gigachat_model(),
+        "deepseek_api_key_set": has_deepseek_key,
+        "deepseek_model": get_deepseek_model(),
         "ai_provider": get_provider(),
         "ollama_model": get_ollama_model(),
         "ollama_base_url": get_ollama_base_url(),
@@ -77,6 +82,10 @@ def update_settings(payload: SettingsUpdate):
         set_setting("gigachat_access_token", "")  # сброс кэша токена при смене ключа
     if payload.gigachat_model is not None:
         set_setting("gigachat_model", payload.gigachat_model.strip() or DEFAULT_GIGACHAT_MODEL)
+    if payload.deepseek_api_key is not None:
+        set_setting("deepseek_api_key", payload.deepseek_api_key.strip())
+    if payload.deepseek_model is not None:
+        set_setting("deepseek_model", payload.deepseek_model.strip() or DEFAULT_DEEPSEEK_MODEL)
     if payload.ai_provider is not None:
         set_setting("ai_provider", payload.ai_provider.strip())
     if payload.ollama_model is not None:
