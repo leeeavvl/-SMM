@@ -810,12 +810,14 @@ def _generate_and_parse_variants(
                 body = _strip_empty_bullet_labels(body)
                 body = _strip_markdown_formatting(body)
                 body = _strip_html_tags(body)
+                body = _fix_truncated_words(body)
                 body = _strip_hashtags(body)
                 body = _strip_trailing_tip_block(body)
                 # Сначала чиним хук и фактические ошибки про бренд (эти правки переписывают
                 # текст целиком и могут случайно ужать его), и только потом добиваем длину —
                 # чтобы финальный шаг проверки объёма был последним и решающим.
                 body = _ensure_no_banned_hook(body, provider)
+                body = _ensure_no_today_intro(body, provider)
                 body = _ensure_no_imagine_scenario(body, provider)
                 body = _ensure_no_forbidden_event_terms(body, provider)
                 body = _ensure_no_fabricated_person(body, provider)
@@ -1037,6 +1039,9 @@ _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+", re.MULTILINE)
 # Применяется ПОСЛЕ _MARKDOWN_BOLD_RE, поэтому оставшиеся одиночные пары — почти
 # наверняка именно курсив, а не двойные звёздочки, разбитые надвое.
 _MARKDOWN_ITALIC_RE = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", re.DOTALL)
+# Осиротевшая «**» без пары в начале строки/абзаца («** Напиши слово...») — реальный
+# промах: модель не закрыла markdown-жирный, звёздочки остались одни в начале абзаца.
+_ORPHAN_BOLD_MARKER_RE = re.compile(r"(^|\n)\*\*\s+", re.MULTILINE)
 
 
 def _strip_markdown_formatting(text: str) -> str:
@@ -1044,6 +1049,7 @@ def _strip_markdown_formatting(text: str) -> str:
         return text
     text = _MARKDOWN_BOLD_RE.sub(r"\1", text)
     text = _MARKDOWN_ITALIC_RE.sub(r"\1", text)
+    text = _ORPHAN_BOLD_MARKER_RE.sub(r"\1", text)
     text = _MARKDOWN_HEADING_RE.sub("", text)
     return text
 
@@ -1077,6 +1083,21 @@ def _strip_html_tags(text: str) -> str:
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
+
+
+# Реальный повторный промах: модель дважды подряд (на разных генерациях) обрывала одно и
+# то же слово на полуслове — «...волонтёрской деятельност» вместо «деятельности». Не
+# случайность, а системный глюк именно с этим словом — чиним точечно.
+_TRUNCATED_WORD_FIXES = {"деятельност": "деятельности"}
+_TRUNCATED_WORD_RE = re.compile(
+    r"\b(" + "|".join(re.escape(w) for w in _TRUNCATED_WORD_FIXES) + r")\b"
+)
+
+
+def _fix_truncated_words(text: str) -> str:
+    if not text:
+        return text
+    return _TRUNCATED_WORD_RE.sub(lambda m: _TRUNCATED_WORD_FIXES[m.group(1)], text)
 
 
 # Пользователь расставляет хештеги сам — они не должны попадать в текст поста вообще
@@ -1353,7 +1374,10 @@ def _ensure_no_fabricated_event_details(body: str, provider: str | None, max_rou
 # одной инструкции недостаточно — нужна программная проверка. Ловим по типичным
 # CTA-триггерам бренда, встретившимся НЕ в последнем абзаце.
 _CTA_TRIGGER_RE = re.compile(
-    r"оставьте заявку|оставить заявку|напиши[а-я]*\s+в\s+коммент\w*|"
+    # «Напиши[те] .{0,30} в комментариях» — допускаем до ~30 символов между глаголом и
+    # «в комментариях» (реальный промах: «Напиши слово «резюме» в комментариях» не ловился
+    # строгим \s+, т.к. между ними было слово-объект).
+    r"оставьте заявку|оставить заявку|напиши[а-я]*\s+.{0,30}?\s+в\s+коммент\w*|"
     r"отправьте?\s+(своё\s+|ваше\s+)?резюме|заполните анкету|"
     r"перейд[а-я]*\s+в\s+(наш\s+)?бот|запишитесь|зарегистрируйтесь",
     re.IGNORECASE,
@@ -1504,6 +1528,95 @@ def _ensure_no_imagine_scenario(body: str, provider: str | None, max_rounds: int
         if new_current == current:
             break
         current = new_current
+    return current
+
+
+# Реальный повторный промах: «Сегодня мы расскажем, как...» встречается НЕ в первой строке
+# поста (её ловит _BANNED_HOOK_RE), а во втором абзаце — модель добавляет отдельную короткую
+# «шапку»-заголовок перед клише. _has_banned_hook проверяет только первые ~15 символов, этот
+# случай нужно ловить по всему тексту, как «представь себе» выше.
+_TODAY_INTRO_ANYWHERE_RE = re.compile(
+    r"сегодня\s+(мы\s+)?(поговорим|расскажем|разберём|разберем|обсудим)\b", re.IGNORECASE
+)
+
+
+def _has_today_intro_anywhere(body: str) -> bool:
+    return bool(_TODAY_INTRO_ANYWHERE_RE.search(body or ""))
+
+
+def _rewrite_today_intro(body: str, provider: str | None) -> str:
+    system_prompt = (
+        "Ты — опытный редактор. Убираешь клише-пересказ темы из готового поста на русском "
+        "языке, не трогая остальной текст. Отвечаешь ТОЛЬКО валидным JSON без "
+        "markdown-обёртки.\n\n" + RUSSIAN_DESLOP_RULES
+    )
+    user_prompt = f"""В этом посте (не обязательно в первой строке) есть клише «сегодня мы
+поговорим о том, как...» / «сегодня расскажем...» — дословный пересказ темы вместо
+содержательного текста. Это запрещённый приём.
+
+---
+{body}
+---
+
+Перепиши абзац с этой фразой: убери клише «сегодня поговорим/расскажем», начни сразу с
+содержания (факт, конкретика, прямое обращение к читателю), без объявления темы поста.
+Остальной текст (другие абзацы, структуру, длину, стиль, эмодзи, хук, призыв к действию)
+сохрани как есть.
+
+Верни JSON-объект с одним полем:
+- "body": весь пост целиком, с исправленным абзацем
+
+Верни только JSON-объект, ничего больше."""
+    text = _generate_text(system_prompt, user_prompt, provider)
+    new_body = _extract_text_field(text, "body")
+    if new_body and not _looks_malformed(new_body) and len(new_body) >= len(body) * 0.85:
+        return new_body
+    return body
+
+
+def _strip_today_intro_anywhere(text: str) -> str:
+    """Последний рубеж: если AI-правка не справилась, вырезаем саму фразу-клише и
+    капитализируем начало абзаца, если оно осталось со строчной буквы."""
+    if not text or not _TODAY_INTRO_ANYWHERE_RE.search(text):
+        return text
+    strip_re = re.compile(
+        r"сегодня\s+(мы\s+)?(поговорим|расскажем|разберём|разберем|обсудим)\b"
+        r"\s*(о том\s*)?,?\s*(как\s+)?",
+        re.IGNORECASE,
+    )
+    cleaned = strip_re.sub("", text)
+    paragraphs = cleaned.split("\n\n")
+    fixed = []
+    for p in paragraphs:
+        stripped_p = p.lstrip()
+        if stripped_p and stripped_p[0].islower():
+            leading_ws = p[: len(p) - len(stripped_p)]
+            p = leading_ws + stripped_p[0].upper() + stripped_p[1:]
+        fixed.append(p)
+    cleaned = "\n\n".join(fixed)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    return cleaned.strip()
+
+
+def _ensure_no_today_intro(body: str, provider: str | None, max_rounds: int = 2) -> str:
+    current = body
+    for _ in range(max_rounds):
+        if not _has_today_intro_anywhere(current):
+            break
+        new_current = current
+        for _attempt in range(2):
+            try:
+                candidate = _rewrite_today_intro(current, provider)
+            except Exception:
+                continue
+            if candidate != current and not _has_today_intro_anywhere(candidate) and not _looks_malformed(candidate):
+                new_current = candidate
+                break
+        if new_current == current:
+            break
+        current = new_current
+    if _has_today_intro_anywhere(current):
+        current = _strip_today_intro_anywhere(current)
     return current
 
 
