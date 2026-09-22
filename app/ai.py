@@ -726,6 +726,7 @@ def _generate_and_parse_variants(
                 body = _ensure_no_imagine_scenario(body, provider)
                 body = _ensure_no_forbidden_event_terms(body, provider)
                 body = _ensure_no_fabricated_person(body, provider)
+                body = _ensure_no_fabricated_event_details(body, provider)
                 if require_slides:
                     body = _ensure_slide_structure(body, provider)
                 if length:
@@ -1107,6 +1108,97 @@ def _ensure_no_forbidden_event_terms(body: str, provider: str | None, max_rounds
             # рисковать ещё одной порчей текста.
             break
         current = candidate
+    return current
+
+
+# Живой пример из реальной генерации: «...на нашем вебинаре «Юрфак в эпоху ИИ» 29 августа
+# в 11:00!» — модель выдумала конкретную дату/время предстоящего мероприятия, которых не
+# было в теме/брифе. Правило «не выдумывай подробности о будущих мероприятиях» уже есть в
+# RUSSIAN_DESLOP_RULES, но конкретную дату/время легко детерминированно поймать: сочетание
+# календарной даты или времени ЧЧ:ММ рядом со словом-мероприятием — почти всегда либо
+# фабрикация, либо требует проверки (в отличие от общего упоминания формата мероприятия).
+_EVENT_MONTH_RE = r"(?:январ[яе]|феврал[яе]|март[а]?|апрел[яе]|ма[яе]|июн[яе]|июл[яе]|август[а]?|сентябр[яе]|октябр[яе]|ноябр[яе]|декабр[яе])"
+_EVENT_DATE_RE = re.compile(rf"\d{{1,2}}\s+{_EVENT_MONTH_RE}(?:\s+\d{{4}}(?:\s*года?)?)?", re.IGNORECASE)
+_EVENT_TIME_RE = re.compile(r"\bв\s+\d{1,2}[:.]\d{2}\b(?:\s*(?:мск|msk|по\s+мск))?", re.IGNORECASE)
+_EVENT_WORD_RE = re.compile(
+    r"вебинар\w*|мастер-класс\w*|встреч\w*|мероприяти\w*|бизнес-завтрак\w*|конференци\w*|созвон\w*|эфир\w*|стрим\w*",
+    re.IGNORECASE,
+)
+
+
+def _has_fabricated_event_details(body: str) -> bool:
+    if not body:
+        return False
+    has_date_or_time = bool(_EVENT_DATE_RE.search(body) or _EVENT_TIME_RE.search(body))
+    return has_date_or_time and bool(_EVENT_WORD_RE.search(body))
+
+
+def _strip_event_date_time(text: str) -> str:
+    """Последний рубеж: если AI-переписывание не сработало ни за один раунд, вырезаем
+    сами дату/время детерминированно (а не весь абзац — здесь это обычно короткая
+    встроенная фраза, а не отдельный смысловой блок)."""
+    if not text:
+        return text
+    cleaned = _EVENT_TIME_RE.sub("", text)
+    cleaned = _EVENT_DATE_RE.sub("", cleaned)
+    # прибираем осиротевшие "в ", пунктуацию и двойные пробелы, оставшиеся после вырезания
+    cleaned = re.sub(r"\bв\s+(?=[,!.\n]|$)", "", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([,!.?])", r"\1", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+def _rewrite_fabricated_event_details(body: str, provider: str | None) -> str:
+    system_prompt = (
+        "Ты — опытный редактор. Убираешь выдуманные подробности о мероприятии из готового "
+        "поста на русском языке, не трогая остальной текст. Отвечаешь ТОЛЬКО валидным JSON "
+        "без markdown-обёртки.\n\n" + RUSSIAN_DESLOP_RULES
+    )
+    user_prompt = f"""В этом посте указана конкретная дата и/или время предстоящего мероприятия
+(вебинара, встречи и т.п.), которых не было в теме/брифе — то есть модель их выдумала и подала
+как реальный факт. Это запрещено.
+
+---
+{body}
+---
+
+Перепиши соответствующее место: убери конкретную выдуманную дату/время, замени на общую
+формулировку без точных цифр (например «на ближайшем вебинаре» вместо «29 августа в 11:00»,
+«скоро объявим дату» вместо конкретной даты). Остальной текст (структуру, длину, стиль, эмодзи,
+хук, призыв к действию) сохрани как есть. Если внимательно присмотревшись ты не находишь в
+тексте выдуманной даты/времени мероприятия — верни текст без изменений.
+
+Верни JSON-объект с одним полем:
+- "body": весь пост целиком, без выдуманной даты/времени
+
+Верни только JSON-объект, ничего больше."""
+    text = _generate_text(system_prompt, user_prompt, provider)
+    new_body = _extract_text_field(text, "body")
+    if new_body and not _looks_malformed(new_body) and len(new_body) >= len(body) * 0.85:
+        return new_body
+    return body
+
+
+def _ensure_no_fabricated_event_details(body: str, provider: str | None, max_rounds: int = 3) -> str:
+    current = body
+    for _ in range(max_rounds):
+        if not _has_fabricated_event_details(current):
+            break
+        new_current = current
+        for _attempt in range(3):
+            try:
+                candidate = _rewrite_fabricated_event_details(current, provider)
+            except Exception:
+                continue
+            if candidate != current and not _has_fabricated_event_details(candidate):
+                new_current = candidate
+                break
+        if new_current == current:
+            break
+        current = new_current
+    if _has_fabricated_event_details(current):
+        current = _strip_event_date_time(current)
     return current
 
 
