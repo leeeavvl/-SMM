@@ -821,6 +821,7 @@ def _generate_and_parse_variants(
                 body = _ensure_no_imagine_scenario(body, provider)
                 body = _ensure_no_forbidden_event_terms(body, provider)
                 body = _ensure_no_fabricated_person(body, provider)
+                body = _ensure_no_fabricated_real_case(body, provider)
                 body = _ensure_no_fabricated_event_details(body, provider)
                 body = _ensure_no_mid_post_cta(body, provider)
                 if require_slides:
@@ -1378,6 +1379,7 @@ _CTA_TRIGGER_RE = re.compile(
     # «в комментариях» (реальный промах: «Напиши слово «резюме» в комментариях» не ловился
     # строгим \s+, т.к. между ними было слово-объект).
     r"оставьте заявку|оставить заявку|напиши[а-я]*\s+.{0,30}?\s+в\s+коммент\w*|"
+    r"оставь[а-я]*\s+.{0,30}?коммент\w*|поделит[а-я]*\s+.{0,30}?коммент\w*|"
     r"отправьте?\s+(своё\s+|ваше\s+)?резюме|заполните анкету|"
     r"перейд[а-я]*\s+в\s+(наш\s+)?бот|запишитесь|зарегистрируйтесь",
     re.IGNORECASE,
@@ -1857,6 +1859,86 @@ def _ensure_no_fabricated_person(body: str, provider: str | None, max_rounds: in
         current = new_current
     if _has_fabricated_person(current):
         current = _strip_fabricated_person_paragraphs(current)
+    return current
+
+
+# Живой промах: «Приведу пример из реальной практики: один юрист успешно прошёл отбор...
+# 90% случаев» — модель придумала кейс и цифры, но подала их как реально произошедшие,
+# без имени, поэтому _has_fabricated_person (ищет капитализированное Имя) это не ловит.
+# Сама фраза-претензия на реальность («пример из реальной практики», «реальный кейс») —
+# самостоятельный красный флаг: то же общее правило «не выдумывай кейсы» из
+# RUSSIAN_DESLOP_RULES, но без имени персонажа.
+_FABRICATED_REAL_CASE_RE = re.compile(
+    r"пример\w*\s+из\s+реальн\w*\s+практик\w*|реальн\w*\s+кейс\w*|случа\w*\s+из\s+практик\w*"
+    r"|на\s+практике\s+был\s+случа\w*|у\s+нас\s+был\s+реальн\w*\s+случа\w*",
+    re.IGNORECASE,
+)
+
+
+def _has_fabricated_real_case(body: str) -> bool:
+    return bool(_FABRICATED_REAL_CASE_RE.search(body or ""))
+
+
+def _rewrite_fabricated_real_case(body: str, provider: str | None) -> str:
+    system_prompt = (
+        "Ты — опытный редактор. Убираешь ложную претензию на реальность придуманного кейса "
+        "из готового поста на русском языке, не трогая остальной текст. Отвечаешь ТОЛЬКО "
+        "валидным JSON без markdown-обёртки.\n\n" + RUSSIAN_DESLOP_RULES
+    )
+    user_prompt = f"""В этом посте есть фраза вроде «пример из реальной практики» / «реальный
+кейс» / «случай из практики», представляющая выдуманный пример как реально произошедший
+факт — это запрещено (см. правило про выдуманные кейсы).
+
+---
+{body}
+---
+
+Перепиши абзац с этой фразой: либо убери претензию на реальность и подай мысль как общую
+рекомендацию/иллюстрацию без утверждения, что это реальный случай («Например, если...» вместо
+«Приведу пример из реальной практики...»), либо убери придуманный кейс целиком, если без
+утверждения о реальности он не несёт смысла. Остальной текст (другие абзацы, структуру, длину,
+стиль, эмодзи, хук, призыв к действию) сохрани как есть.
+
+Верни JSON-объект с одним полем:
+- "body": весь пост целиком, с исправленным абзацем
+
+Верни только JSON-объект, ничего больше."""
+    text = _generate_text(system_prompt, user_prompt, provider)
+    new_body = _extract_text_field(text, "body")
+    if new_body and not _looks_malformed(new_body) and len(new_body) >= len(body) * 0.7:
+        return new_body
+    return body
+
+
+def _strip_fabricated_real_case_paragraphs(text: str) -> str:
+    """Последний рубеж: если AI-правка не справилась, вырезаем абзацы с претензией на
+    реальность целиком — как для выдуманных людей (см. _strip_fabricated_person_paragraphs)."""
+    if not text:
+        return text
+    paragraphs = [p for p in text.split("\n\n") if not _has_fabricated_real_case(p)]
+    cleaned = "\n\n".join(paragraphs).strip()
+    return cleaned or text
+
+
+def _ensure_no_fabricated_real_case(body: str, provider: str | None, max_rounds: int = 2) -> str:
+    current = body
+    for _ in range(max_rounds):
+        if not _has_fabricated_real_case(current):
+            break
+        new_current = current
+        for _attempt in range(2):
+            try:
+                candidate = _rewrite_fabricated_real_case(current, provider)
+            except Exception:
+                continue
+            if candidate != current and not _has_fabricated_real_case(candidate) and not _looks_malformed(candidate):
+                new_current = candidate
+                break
+        if new_current == current:
+            break
+        current = new_current
+    if _has_fabricated_real_case(current):
+        current = _strip_fabricated_real_case_paragraphs(current)
     return current
 
 
