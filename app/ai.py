@@ -110,6 +110,13 @@ RUSSIAN_DESLOP_RULES = """ПРАВИЛА СТИЛЯ ДЛЯ РУССКОГО ТЕ
 помимо этого, следовательно, итак, в заключение, в целом можно сказать, подводя итог,
 надеюсь, эта статья/пост была полезна.
 
+ТОЧНОСТЬ СЛОВОУПОТРЕБЛЕНИЯ — частая калька с английского, которая режет слух в русском
+юридическом тексте: «экспертиза» в русском (особенно в юридическом контексте) означает
+формальную процедуру проверки («судебная экспертиза», «независимая экспертиза документа»),
+а НЕ «мастерство»/«компетентность» человека, как английское expertise. Не пиши «юрист продаёт
+свою экспертизу» — это калька и логическая ошибка. Вместо этого: «экспертность», «компетентность»,
+«профессионализм», «опыт и знания».
+
 ЗАПРЕЩЁННЫЕ ОТКРЫВАЮЩИЕ ФРАЗЫ — этот пост НЕ должен начинаться ни с одной из них
 (и ни с чего похожего по смыслу и конструкции), даже если тема про студента/карьеру:
 «представь», «представьте», «представь себе», «представь, что ты», «вообрази», «вообразите»,
@@ -779,6 +786,7 @@ def _generate_and_parse_variants(
             for v in variants:
                 body = _clean_body_artifacts(v.get("body", ""))
                 body = _strip_meta_labels(body)
+                body = _strip_empty_bullet_labels(body)
                 body = _strip_markdown_formatting(body)
                 body = _strip_html_tags(body)
                 body = _strip_hashtags(body)
@@ -791,6 +799,7 @@ def _generate_and_parse_variants(
                 body = _ensure_no_forbidden_event_terms(body, provider)
                 body = _ensure_no_fabricated_person(body, provider)
                 body = _ensure_no_fabricated_event_details(body, provider)
+                body = _ensure_no_mid_post_cta(body, provider)
                 if require_slides:
                     body = _ensure_slide_structure(body, provider)
                 if length:
@@ -973,6 +982,24 @@ def _strip_meta_labels(text: str) -> str:
     if not text:
         return text
     return _META_LABEL_RE.sub("", text).strip()
+
+
+# Реальный промах: «🔹 Что нужно знать:\n🔹 Резюме — это не перечень...» — модель пишет
+# «пустой» буллет-подзаголовок (метка с двоеточием и без содержимого на той же строке),
+# сразу за которым идёт следующий буллет с настоящим содержанием. Читателю такая пустая
+# строка кажется случайным обрывком. Ловим детерминированно: маркер-буллет + короткая
+# подпись + двоеточие + КОНЕЦ строки (ничего после двоеточия), а сразу дальше — ещё один
+# маркер-буллет.
+_EMPTY_BULLET_LABEL_RE = re.compile(
+    r"^[^\w\n]{1,4}[А-ЯЁ][а-яёА-ЯЁ .,]{1,40}:[ \t]*\n(?=[^\w\n]{1,4}\S)",
+    re.MULTILINE,
+)
+
+
+def _strip_empty_bullet_labels(text: str) -> str:
+    if not text:
+        return text
+    return _EMPTY_BULLET_LABEL_RE.sub("", text)
 
 
 # **жирный** и ## заголовки не рендерятся на большинстве площадок (VK, Instagram-подписи,
@@ -1281,6 +1308,92 @@ def _ensure_no_fabricated_event_details(body: str, provider: str | None, max_rou
         current = new_current
     if _has_fabricated_event_details(current):
         current = _strip_event_date_time(current)
+    return current
+
+
+# Живой повторный промах: призыв к действию/вопрос стоит НЕ в конце поста, а посередине,
+# после чего пост продолжается ещё одним-двумя абзацами по теме — читателю кажется, что
+# это два склеенных поста. Промпт-правило (СТРУКТУРА ПОСТА, п.4) уже это запрещает, но
+# одной инструкции недостаточно — нужна программная проверка. Ловим по типичным
+# CTA-триггерам бренда, встретившимся НЕ в последнем абзаце.
+_CTA_TRIGGER_RE = re.compile(
+    r"оставьте заявку|оставить заявку|напиши[а-я]*\s+в\s+коммент\w*|"
+    r"отправьте?\s+(своё\s+|ваше\s+)?резюме|заполните анкету|"
+    r"перейд[а-я]*\s+в\s+(наш\s+)?бот|запишитесь|зарегистрируйтесь",
+    re.IGNORECASE,
+)
+
+
+def _has_mid_post_cta(body: str) -> bool:
+    paragraphs = [p for p in (body or "").split("\n\n") if p.strip()]
+    if len(paragraphs) < 2:
+        return False
+    return any(_CTA_TRIGGER_RE.search(p) for p in paragraphs[:-1])
+
+
+def _move_cta_to_end(text: str) -> str:
+    """Последний рубеж защиты: если AI-переписывание не справилось, не удаляем CTA-абзац
+    (в нём может быть реальный контент, а не только сам призыв), а переставляем его в
+    конец текста — так реальное содержание не теряется, просто чинится порядок."""
+    paragraphs = [p for p in text.split("\n\n") if p.strip()]
+    if len(paragraphs) < 2:
+        return text
+    cta_paragraphs = [p for p in paragraphs[:-1] if _CTA_TRIGGER_RE.search(p)]
+    if not cta_paragraphs:
+        return text
+    remaining = [p for p in paragraphs if p not in cta_paragraphs]
+    return "\n\n".join(remaining + cta_paragraphs).strip()
+
+
+def _rewrite_mid_post_cta(body: str, provider: str | None) -> str:
+    system_prompt = (
+        "Ты — опытный редактор. Переструктурируешь готовый пост на русском языке в одно "
+        "связное целое, не теряя реального содержания. Отвечаешь ТОЛЬКО валидным JSON без "
+        "markdown-обёртки.\n\n" + RUSSIAN_DESLOP_RULES
+    )
+    user_prompt = f"""В этом посте призыв к действию (или вовлекающий вопрос к читателю) стоит
+НЕ в самом конце, а посередине — после него идёт ещё текст по теме, как будто это два
+склеенных поста.
+
+---
+{body}
+---
+
+Перепиши пост целиком как ОДНО связное целое: сохрани ВСЁ реальное содержание (примеры,
+пункты, аргументы) в разумном порядке, убери повтор мыслей, если он есть, и оставь ТОЛЬКО ОДИН
+призыв к действию / вовлекающий вопрос — в самом конце поста, после того как тема раскрыта
+полностью. Не сокращай реальный контент, только переставь структуру.
+
+Верни JSON-объект с одним полем:
+- "body": весь пост целиком, с одним призывом к действию в конце
+
+Верни только JSON-объект, ничего больше."""
+    text = _generate_text(system_prompt, user_prompt, provider)
+    new_body = _extract_text_field(text, "body")
+    if new_body and not _looks_malformed(new_body) and len(new_body) >= len(body) * 0.7:
+        return new_body
+    return body
+
+
+def _ensure_no_mid_post_cta(body: str, provider: str | None, max_rounds: int = 2) -> str:
+    current = body
+    for _ in range(max_rounds):
+        if not _has_mid_post_cta(current):
+            break
+        new_current = current
+        for _attempt in range(2):
+            try:
+                candidate = _rewrite_mid_post_cta(current, provider)
+            except Exception:
+                continue
+            if candidate != current and not _has_mid_post_cta(candidate) and not _looks_malformed(candidate):
+                new_current = candidate
+                break
+        if new_current == current:
+            break
+        current = new_current
+    if _has_mid_post_cta(current):
+        current = _move_cta_to_end(current)
     return current
 
 
